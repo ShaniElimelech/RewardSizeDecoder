@@ -165,12 +165,12 @@ class RewardSizeDecoder:
         # Choose base directory
         if reference_path is not None:
             p = Path(reference_path).expanduser().resolve()
-            base = p if p.is_dir() else p.parent
+            base = p if p.is_dir() else p.parent.parent
         else:
             try:
-                base = Path(__file__).resolve().parent
+                base = Path(__file__).resolve().parent.parent
             except NameError:
-                base = Path.cwd().resolve()
+                base = Path.cwd().resolve().parent
 
         # Build saveroot path
         safe_leaf = _safe_folder_name(self.save_folder_name)
