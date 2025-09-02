@@ -22,6 +22,7 @@ class RewardSizeDecoder:
     def __init__(self, *,
                  subject_id,
                  session,
+                 num_features,
                  frame_rate,
                  time_bin,
                  missing_frames_lst,
@@ -37,6 +38,7 @@ class RewardSizeDecoder:
 
         self.subject_id = subject_id
         self.session = session
+        self.num_features = num_features
         self.frame_rate = frame_rate
         self.time_bin = time_bin
         self.missing_frames_lst = missing_frames_lst
@@ -214,7 +216,7 @@ class RewardSizeDecoder:
         self.log.debug('start load_clean_align_data')
         # preprocess data - load from dj, clean and align all data sets
         start_trials, reward_labels, neural_indexes, video_features = (
-            load_clean_align_data(self.subject_id, self.session, self.frame_rate, self.time_bin, self.dj_info, self.saveroot, self.handle_omission, self.clean_ignore, self.log))
+            load_clean_align_data(self.subject_id, self.session, self.num_features, self.frame_rate, self.time_bin, self.dj_info, self.saveroot, self.log, self.handle_omission, self.clean_ignore))
         self.log.info('finish load_clean_align_data')
         frames_bin = list(range(self.time_bin[0] * self.frame_rate, self.time_bin[1] * self.frame_rate + 1))
         all_frames_scores = {}
@@ -325,6 +327,24 @@ class RewardSizeDecoder:
 
 
 if __name__ == '__main__':
+
+
+    '''
+    import datajoint as dj
+
+    host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
+    user = 'ShaniE'
+    password = 'opala'
+    dj_info = {'host_path': host, 'user_name': user, 'password': password}
+
+
+    dj.config['database.host'] = dj_info['host_path']
+    dj.config['database.user'] = dj_info['user_name']
+    dj.config['database.password'] = dj_info['password']
+    conn = dj.conn()
+
+    '''
+
     subject_lst = [464724, 464725, 463189, 463190]
     session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 2, 3, 4, 9], [2, 3, 5, 6, 10]]
     missing_frames = [7, 8, 9]
@@ -337,18 +357,19 @@ if __name__ == '__main__':
     dj_info = {'host_path': host, 'user_name': user, 'password': password}
 
     decoder = RewardSizeDecoder(
-        subject_id=464724,
-        session=2,
-        frame_rate=2,
-        time_bin=(-2, 5),
-        missing_frames_lst=[7, 8, 9],
-        model="SVM",
-        user_model_params=user_model_params,
-        resample_method="combine undersample(random) and oversample(SMOTE)",
-        dj_info=dj_info,
-        save_folder_name="my_run",
+        subject_id=464724,      # subject id
+        session=2,              # session number
+        num_features=200,       # number of predictive features from video
+        frame_rate=2,           # neural frame rate(Hz)
+        time_bin=(-2, 5),       # trial bin duration(sec)
+        missing_frames_lst=[7, 8, 9],       # list of neural frames without corresponding video frames
+        model="SVM",            # type of classification model to apply on data
+        user_model_params=user_model_params,        # model hyperparameters, if not specify then the default will be set/ apply parameters search
+        resample_method="combine undersample(random) and oversample(SMOTE)",        # choose resample method to handle unbalanced data
+        dj_info=dj_info,                # data joint user credentials
+        save_folder_name="my_run",      # choose new folder name for each time you run the model with different parameters (recommendation only)
         handle_omission='convert',          # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
-        clean_ignore=True,
+        clean_ignore=True,                  # throw out ignore trials (trials in which the mouse was not responsive)
     )
 
     decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)

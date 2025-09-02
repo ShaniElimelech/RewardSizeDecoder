@@ -7,7 +7,7 @@ from scipy import stats as sc
 import pickle
 import datajoint as dj
 import pandas as pd
-from ExtractVideoNeuralAlignment import get_session_trials_aligned_frames
+from .ExtractVideoNeuralAlignment import get_session_trials_aligned_frames
 
 
 class Video:

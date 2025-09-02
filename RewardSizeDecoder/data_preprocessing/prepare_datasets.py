@@ -1,5 +1,5 @@
-from trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
-from VideoPipeline import Video, VideoPair
+from .trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
+from .VideoPipeline import Video, VideoPair
 import numpy as np
 import datajoint as dj
 import logging

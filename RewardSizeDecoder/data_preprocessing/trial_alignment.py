@@ -6,7 +6,7 @@ import numpy as np
 import time
 import seaborn as sns
 import matplotlib.pyplot as plt
-from ExtractVideoNeuralAlignment import get_session_trials_aligned_frames, save_as_video
+from .ExtractVideoNeuralAlignment import get_session_trials_aligned_frames, save_as_video
 from collections import defaultdict
 
 

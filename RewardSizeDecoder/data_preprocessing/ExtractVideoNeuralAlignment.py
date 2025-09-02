@@ -59,7 +59,7 @@ def get_trials_data_table_for_mouse_session(subject_id, session, camera_num, tra
 
     key = {'subject_id': subject_id, 'session': session}
     tracking_trials = tracking.TrackingTrial
-    video_neural_alignment_table = video_neural.VideoNeuralAlignment
+    video_neural_alignment_table = video_neural.NeuralVideoAlignment
     # Base exclusion - removing bad trials and grooming trials
     restricted_table = (tracking_trials * video_neural_alignment_table) - tracking.TrackingTrialBad - tracking.VideoGroomingTrial
     # Conditional exclusions - ignore and omission trials
