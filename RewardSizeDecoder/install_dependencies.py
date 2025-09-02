@@ -16,7 +16,7 @@ packages = [
 
 def main():
     for pkg in packages:
-        print(f"⬇️ Installing or upgrading {pkg} ...")
+        print(f" Installing or upgrading {pkg} ...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", pkg])
 
 if __name__ == "__main__":
