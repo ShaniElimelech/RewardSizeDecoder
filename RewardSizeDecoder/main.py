@@ -365,7 +365,7 @@ if __name__ == '__main__':
         frame_rate=2,           # neural frame rate(Hz)
         time_bin=(-2, 5),       # trial bin duration(sec)
         missing_frames_lst=[7, 8, 9],       # list of neural frames without corresponding video frames
-        original_video_path = 'C:/Users/admin/Arseny_behavior_video.lnk',        # path to raw original video data
+        original_video_path = 'Z:/',        # path to raw original video data
         model="SVM",            # type of classification model to apply on data
         user_model_params=user_model_params,        # model hyperparameters, if not specify then the default will be set/ apply parameters search
         resample_method="combine undersample(random) and oversample(SMOTE)",        # choose resample method to handle unbalanced data

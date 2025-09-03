@@ -2,7 +2,7 @@ import cv2   ### please install opencv-python package with pip and not conda oth
 import os
 import numpy as np
 import time
-import matplotlib as plt
+import matplotlib.pyplot as plt
 from scipy import stats as sc
 import pickle
 import datajoint as dj

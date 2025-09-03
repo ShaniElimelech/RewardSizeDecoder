@@ -37,16 +37,16 @@ def get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, came
 
 def aligned_trial_video_frames(trial_video_frames_indexes, frames_list):
     #print("strting aligned_trial_video_frames")
-    aligned_trial_video_frames = []
+    aligned_trial_video_frames_ = []
     for index_range in trial_video_frames_indexes:
         if index_range == []:
             continue
         if index_range[0] < len(frames_list) <= index_range[1] + 1:
-            aligned_trial_video_frames.append(frames_list[index_range[0]:])
+            aligned_trial_video_frames_.append(frames_list[index_range[0]:])
             break
-        aligned_trial_video_frames.append(frames_list[index_range[0]:index_range[1] + 1])
+        aligned_trial_video_frames_.append(frames_list[index_range[0]:index_range[1] + 1])
 
-    return aligned_trial_video_frames
+    return aligned_trial_video_frames_
 
 
 def get_trials_data_table_for_mouse_session(subject_id, session, camera_num, tracking, video_neural, exp2, clean_ignore, clean_omission):

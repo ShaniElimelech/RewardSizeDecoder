@@ -1,3 +1,5 @@
+import os.path
+
 from .trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
 from .VideoPipeline import Video, VideoPair
 import numpy as np
@@ -76,11 +78,17 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
                                                  save_root=saveroot, compute_neural_data=False)
 
     logger.info('finish video downsample and alignment')
-    logger.debug('start video svd')
-    # get video features - compute svd for combined cameras
-    pair = VideoPair(subject_id, session, video0, video1)
-    video_features = pair.compute_svd(saveroot)[:, : num_features]  # shape: (frames, features) num all session frames x 50 first pc's
-    logger.info('finish video svd')
+
+    svd_path = os.path.join(saveroot, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras')
+    if os.path.exists(svd_path):
+        video_features = np.load(svd_path)
+
+    else:
+        logger.debug('start video svd')
+        # get video features - compute svd for combined cameras
+        pair = VideoPair(subject_id, session, video0, video1)
+        video_features = pair.compute_svd(saveroot)[:, : num_features]  # shape: (frames, features) num all session frames x 50 first pc's
+        logger.info('finish video svd')
 
     return start_trials, reward_labels, neural_indexes, video_features
 
