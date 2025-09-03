@@ -107,7 +107,7 @@ class SVM:
             self.params['degree'] = study.best_params['degree']
         # Update class_weight only if custom weights were tuned
         if self.custom_class_weights:
-            class_0_weight = study.best_params['class_weight']
+            class_0_weight = study.best_params['class_0_weight']
             class_1_weight = 100 - class_0_weight
             self.params['class_weight'] = {0: class_0_weight, 1: class_1_weight}
 
