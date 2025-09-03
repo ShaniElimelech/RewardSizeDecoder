@@ -26,6 +26,7 @@ class RewardSizeDecoder:
                  frame_rate,
                  time_bin,
                  missing_frames_lst,
+                 original_video_path,
                  model,
                  user_model_params,
                  resample_method,
@@ -42,6 +43,7 @@ class RewardSizeDecoder:
         self.frame_rate = frame_rate
         self.time_bin = time_bin
         self.missing_frames_lst = missing_frames_lst
+        self.original_video_path = original_video_path
         self.model = model
         self.user_model_params = user_model_params
         self.resample_method = resample_method
@@ -216,7 +218,7 @@ class RewardSizeDecoder:
         self.log.debug('start load_clean_align_data')
         # preprocess data - load from dj, clean and align all data sets
         start_trials, reward_labels, neural_indexes, video_features = (
-            load_clean_align_data(self.subject_id, self.session, self.num_features, self.frame_rate, self.time_bin, self.dj_info, self.saveroot, self.log, self.handle_omission, self.clean_ignore))
+            load_clean_align_data(self.subject_id, self.session, self.num_features, self.frame_rate, self.time_bin, self.original_video_path, self.dj_info, self.saveroot, self.log, self.handle_omission, self.clean_ignore))
         self.log.info('finish load_clean_align_data')
         frames_bin = list(range(self.time_bin[0] * self.frame_rate, self.time_bin[1] * self.frame_rate + 1))
         all_frames_scores = {}
@@ -363,6 +365,7 @@ if __name__ == '__main__':
         frame_rate=2,           # neural frame rate(Hz)
         time_bin=(-2, 5),       # trial bin duration(sec)
         missing_frames_lst=[7, 8, 9],       # list of neural frames without corresponding video frames
+        original_video_path = 'C:/Users/admin/Arseny_behavior_video.lnk',        # path to raw original video data
         model="SVM",            # type of classification model to apply on data
         user_model_params=user_model_params,        # model hyperparameters, if not specify then the default will be set/ apply parameters search
         resample_method="combine undersample(random) and oversample(SMOTE)",        # choose resample method to handle unbalanced data

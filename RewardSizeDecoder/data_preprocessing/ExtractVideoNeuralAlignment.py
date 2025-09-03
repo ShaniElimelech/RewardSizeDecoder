@@ -103,7 +103,7 @@ def get_trial_neural_frames(dff_data, trial_neural_frames_indexes, trial_video_l
     return neural_frames
 
 
-def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_modules, clean_ignore, clean_omission, compute_neural_data=True,
+def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_modules, original_video_path, clean_ignore, clean_omission, compute_neural_data=True,
                                       take_only_first_video_frame=False, drop_neural_frames_with_no_video=True):
     """
     This function yields a dictionary with the neural frames and aligned video frames for each trial
@@ -117,7 +117,7 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
     exp2 = dj_modules['exp2']
 
     session_string = f"session{session}"
-    all_videos_path = "D:\\admin\\SharedFolder\\Arseny_behavior_video"
+    all_videos_path = original_video_path
     if camera_num not in [0, 1]:
         raise ValueError("Camera number must be 0 or 1!")
     

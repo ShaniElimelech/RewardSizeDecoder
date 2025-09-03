@@ -18,7 +18,7 @@ def get_t_slice_video(start_trials, t_idx, video_array, neural_indexes, reward_l
     return video_data, labels_data
 
 
-def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bin: tuple, dj_info: dict, saveroot, logger,
+def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bin: tuple, original_video_path: str , dj_info: dict, saveroot, logger,
                      handle_omission: str ='convert', clean_ignore=True):
     """
     A multi alignment function that gets subject id and session and align all datasets (video, neural activity, reward size labels) that goes into the reward decoder.
@@ -69,10 +69,10 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
     video0 = Video(subject_id, session, camera_num=0, video_path=None)
     video1 = Video(subject_id, session, camera_num=1, video_path=None)
     # Align neural data to video data and downsample video
-    video0_array, neural_indexes = video0.align_with_neural_data(dj_modules, clean_ignore, clean_omission,
+    video0_array, neural_indexes = video0.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission,
                                                                save_root=saveroot, compute_neural_data=False)
     # once you computed neural array for one camera you dont need to repeat for the second
-    video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, clean_ignore, clean_omission,
+    video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission,
                                                  save_root=saveroot, compute_neural_data=False)
 
     logger.info('finish video downsample and alignment')

@@ -88,7 +88,7 @@ class Video:
         # Release the VideoWriter to save the video file
         out.release()
 
-    def align_with_neural_data(self, dj_modules, clean_ignore=False, clean_omission=False,
+    def align_with_neural_data(self, dj_modules, original_video_path, clean_ignore=False, clean_omission=False,
                                save_root=None, compute_neural_data=True):
         """
         Aligns video data with neural data on a per-trial basis, averages video frames per neural frame,
@@ -112,7 +112,7 @@ class Video:
         neural_indexes = []
 
         for trial_index, trial_data in get_session_trials_aligned_frames(
-                self.subject_id, self.session, self.camera_num, dj_modules, clean_ignore,
+                self.subject_id, self.session, self.camera_num, dj_modules, original_video_path, clean_ignore,
                 clean_omission, compute_neural_data):
 
             if compute_neural_data:
@@ -249,10 +249,11 @@ if __name__ == '__main__':
     dj_modules = {'img': img, 'tracking': tracking, 'exp2': exp2, 'video_neural': video_neural}
 
     # Align neural data to video data and downsample video
-    video0_array, neural_array = video0.align_with_neural_data(dj_modules, clean_ignore=False, clean_omission=False,
+    original_video_path = 'put here your path to original video folder'
+    video0_array, neural_array = video0.align_with_neural_data(dj_modules, original_video_path, clean_ignore=False, clean_omission=False,
         save_root=saveroot, compute_neural_data=True)
     # once you computed neural array for one camera you dont need to repeat for the second
-    video1_array = video1.align_with_neural_data(dj_modules, clean_ignore=False, clean_omission=False,
+    video1_array = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore=False, clean_omission=False,
                                                               save_root=saveroot, compute_neural_data=False)
 
     # compute svd of two cameras
