@@ -79,9 +79,10 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
 
     logger.info('finish video downsample and alignment')
 
-    svd_path = os.path.join(saveroot, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras')
+    svd_path = os.path.join(saveroot, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
     if os.path.exists(svd_path):
         video_features = np.load(svd_path)
+        logger.info('video svd already exist -> finish loading svd')
 
     else:
         logger.debug('start video svd')
