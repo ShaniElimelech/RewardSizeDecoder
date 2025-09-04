@@ -233,10 +233,11 @@ class RewardSizeDecoder:
                 if frame_time in self.missing_frames_lst:  # frames without corresponding video
                     continue
             data_video, data_reward = get_t_slice_video(start_trials, frame_idx, video_features, neural_indexes, reward_labels)
-            ave_roc_auc = {}
-            ave_eval_scores = {}
+            folds_eval_scores = {}
             clf_trial_idx = {}
             folds_params = {}
+            all_y_true = []
+            all_y_probs = []
             skf = StratifiedKFold(n_splits=5)
 
             # encode target array
@@ -269,7 +270,6 @@ class RewardSizeDecoder:
                     y_pred = predict_ensemble(models, X_test)
                     y_proba = predict_ensemble_proba(models, X_test)
                     eval_scores = compute_eval_metrics(y_pred, y_test)
-                    roc_auc = compute_roc(y_proba, y_test)
 
                 else:
                     X_train_us, y_train_us = resample_dict[self.resample_method](X_train, y_train)
@@ -281,24 +281,27 @@ class RewardSizeDecoder:
 
                     clf.train(X_train_us, y_train_us)
                     y_pred = clf.predict(X_test)
+                    y_proba = clf.predict_proba(X_test)
                     eval_scores = clf.compute_metrics(y_test)
-                    roc_auc = clf.roc(y_test)
 
-                ave_eval_scores = {k: ave_eval_scores.get(k, []) + [v] for k, v in eval_scores.items()}
-                ave_roc_auc = {k: ave_roc_auc.get(k, []) + [v] for k, v in roc_auc.items()}
+                all_y_true.append(y_test)
+                all_y_probs.append(y_proba)
+                folds_eval_scores = {k: folds_eval_scores.get(k, []) + [v] for k, v in eval_scores.items()}
                 # compute tn, fp, fn, tp trials indexes
                 clf_indexes = confusion_indexes(y_test, y_pred)
                 clf_trial_idx = {k: clf_trial_idx.get(k, []) + [test_index[i] for i in v] for k, v in clf_indexes.items()}
 
+            full_y_true = np.concatenate(all_y_true)
+            full_y_probs = np.concatenate(all_y_probs)
+            full_roc_auc = compute_roc(full_y_probs, full_y_true)
             # average scores over cv folds
-            ave_eval_scores = {k: sum(v) / len(v) for k, v in ave_eval_scores.items()}
-            ave_roc_auc = {k: np.array(v).mean(axis=0) for k, v in ave_roc_auc.items()}
+            ave_eval_scores = {k: sum(v) / len(v) for k, v in folds_eval_scores.items()}
             # compute principal component k at t time point for tn, fp, fn, tp trials
             k_pc = 0
             separated_video = separate_video_activity(data_video[k_pc], clf_trial_idx)
 
-            all_frames_scores[frame_time] = ave_eval_scores
-            all_frames_roc[frame_time] = ave_roc_auc
+            all_frames_scores[frame_time] = folds_eval_scores
+            all_frames_roc[frame_time] = full_roc_auc
             all_frames_confusion[frame_time] = clf_trial_idx
             all_frames_pc_separated[frame_time] = separated_video
             all_frames_best_params[frame_time] = folds_params
@@ -328,24 +331,6 @@ class RewardSizeDecoder:
 
 
 if __name__ == '__main__':
-
-
-    '''
-    import datajoint as dj
-
-    host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
-    user = 'ShaniE'
-    password = 'opala'
-    dj_info = {'host_path': host, 'user_name': user, 'password': password}
-
-
-    dj.config['database.host'] = dj_info['host_path']
-    dj.config['database.user'] = dj_info['user_name']
-    dj.config['database.password'] = dj_info['password']
-    conn = dj.conn()
-
-    '''
-
     subject_lst = [464724, 464725, 463189, 463190]
     session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 2, 3, 4, 9], [2, 3, 5, 6, 10]]
     missing_frames = [7, 8, 9]
@@ -364,18 +349,18 @@ if __name__ == '__main__':
         frame_rate=2,           # neural frame rate(Hz)
         time_bin=(-2, 5),       # trial bin duration(sec)
         missing_frames_lst=[7, 8, 9],       # list of neural frames without corresponding video frames
-        original_video_path = 'Z:/',        # path to raw original video data
+        original_video_path='Z:/',        # path to raw original video data - shared video folder located on Z drive
         model="SVM",            # type of classification model to apply on data
         user_model_params=user_model_params,        # model hyperparameters, if not specify then the default will be set/ apply parameters search
         resample_method="combine undersample(random) and oversample(SMOTE)",        # choose resample method to handle unbalanced data
         dj_info=dj_info,                # data joint user credentials
-        save_folder_name="my_run",      # choose new folder name for each time you run the model with different parameters (recommendation only)
+        save_folder_name="my_run",      # choose new folder name for each time you run the model with different parameters
         handle_omission='convert',          # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
         clean_ignore=True,                  # throw out ignore trials (trials in which the mouse was not responsive)
     )
 
     decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)
-    decoder.define_saveroot(reference_path=None,  # or a data file path/ directory
+    decoder.define_saveroot(reference_path=None,  # data file path/ directory to save results, if None results will be save in the parent folder
                             log_to_file=False)     # no file logs
     decoder.decoder()
 
