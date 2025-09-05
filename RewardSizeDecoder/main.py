@@ -247,11 +247,6 @@ class RewardSizeDecoder:
                 X_train, X_test = data_video[train_index], data_video[test_index]
                 y_train, y_test = data_reward[train_index], data_reward[test_index]
 
-                # normalize X data
-                X_scaler = StandardScaler()
-                X_train = X_scaler.fit_transform(X_train)
-                X_test = X_scaler.transform(X_test)
-
                 # Division of data to folds prior to resample methods (prevent data leakage)
                 # Apply resample on train data
                 # train and test model
@@ -264,6 +259,12 @@ class RewardSizeDecoder:
                         clf = model_dict[self.model](**user_model_params[self.model])
                         if self.model in ['SVM', 'LR']:
                             clf.find_best_params(X_train_us, y_train_us)  # tune hyperparameters
+
+                        # normalize X data before training on the full train data
+                        X_scaler = StandardScaler()
+                        X_train_us = X_scaler.fit_transform(X_train)
+                        X_test = X_scaler.transform(X_test)
+
                         clf.train(X_train_us, y_train_us)
                         models.append(clf)
                     y_pred = predict_ensemble(models, X_test)
@@ -278,6 +279,11 @@ class RewardSizeDecoder:
                         clf.find_best_params(X_train_us, y_train_us)
                         best_params = clf.get_best_params()
                         folds_params = {k: folds_params.get(k, []) + [v] for k, v in best_params.items()}
+
+                    # normalize X data before training on the full train data
+                    X_scaler = StandardScaler()
+                    X_train_us = X_scaler.fit_transform(X_train_us)
+                    X_test = X_scaler.transform(X_test)
 
                     clf.train(X_train_us, y_train_us)
                     y_pred = clf.predict(X_test)
