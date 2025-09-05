@@ -8,6 +8,8 @@ from sklearn.svm import SVC
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import KFold
 from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 
 class SVM:
@@ -44,7 +46,7 @@ class SVM:
         self.y_probs = None
         self.y_pred = None
 
-    def train(self, xtrain, ytrain, xtest):
+    def train(self, xtrain, ytrain):
         self.model.fit(xtrain, ytrain)
 
     def predict_proba(self, xtest):
@@ -69,7 +71,7 @@ class SVM:
 
             # Suggest hyperparameters based on the kernel choice
             self.params['C'] = trial.suggest_float('C', 1e-4, 1e1, log=True)
-            self.params['max_iter'] = trial.suggest_int('max_iter', 50, 500)
+            self.params['max_iter'] = trial.suggest_int('max_iter', 100, 1000)
             self.params['tol'] = trial.suggest_float('tol', 1e-5, 1e-2, log=True)
             self.params['degree'] = trial.suggest_int('degree', 2, 5) if kernel == 'poly' else 3
             if self.custom_class_weights:
@@ -83,8 +85,14 @@ class SVM:
             # Re-initialize model with the current hyperparameters
             self.model = SVC(**self.params)
 
+            # Build pipeline
+            pipeline = Pipeline([
+                ('scaler', StandardScaler()),
+                ('svm', self.model)
+            ])
+
             # Cross-validation and calculate AUC
-            auc = cross_val_score(self.model, x, y, cv=5, scoring='roc_auc').mean()
+            auc = cross_val_score(pipeline, x, y, cv=5, scoring='roc_auc').mean()
             return auc
 
         return objective
