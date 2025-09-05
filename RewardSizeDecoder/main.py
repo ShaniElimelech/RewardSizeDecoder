@@ -323,7 +323,8 @@ class RewardSizeDecoder:
             "hyperparameters.pklq": all_frames_best_params,
         }
         for fname, obj in to_dump.items():
-            with open(fname, "wb") as f:
+            fpath = os.path.join(savedir, fname)
+            with open(fpath, "wb") as f:
                 pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         plot_results(self.saveroot, all_frames_scores, all_frames_roc, self.subject_id, self.session, self.model, frames_bin, self.frame_rate)
