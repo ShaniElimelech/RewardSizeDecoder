@@ -236,8 +236,9 @@ class RewardSizeDecoder:
             folds_eval_scores = {}
             clf_trial_idx = {}
             folds_params = {}
-            all_y_true = []
-            all_y_probs = []
+            full_y_true = np.empty_like(data_reward, dtype=np.int64)
+            full_y_pred = np.empty_like(data_reward, dtype=np.int64)
+            full_y_probs = np.empty((len(data_reward)), dtype=np.float64)
             skf = StratifiedKFold(n_splits=5)
 
             # encode target array
@@ -285,26 +286,26 @@ class RewardSizeDecoder:
                     X_train_us = X_scaler.fit_transform(X_train_us)
                     X_test = X_scaler.transform(X_test)
 
+                    self.log.info('train on full training dataset')
                     clf.train(X_train_us, y_train_us)
                     y_pred = clf.predict(X_test)
                     y_proba = clf.predict_proba(X_test)
                     eval_scores = clf.compute_metrics(y_test)
 
-                all_y_true.append(y_test)
-                all_y_probs.append(y_proba)
+                full_y_true[test_index] = y_test
+                full_y_pred[test_index] = y_pred
+                full_y_probs[test_index] = y_proba
                 folds_eval_scores = {k: folds_eval_scores.get(k, []) + [v] for k, v in eval_scores.items()}
                 # compute tn, fp, fn, tp trials indexes
                 clf_indexes = confusion_indexes(y_test, y_pred)
                 clf_trial_idx = {k: clf_trial_idx.get(k, []) + [test_index[i] for i in v] for k, v in clf_indexes.items()}
 
-            full_y_true = np.concatenate(all_y_true)
-            full_y_probs = np.concatenate(all_y_probs)
             full_roc_auc = compute_roc(full_y_probs, full_y_true)
-            # average scores over cv folds
-            ave_eval_scores = {k: sum(v) / len(v) for k, v in folds_eval_scores.items()}
+
             # compute principal component k at t time point for tn, fp, fn, tp trials
+            clf_indexes = confusion_indexes(full_y_true, full_y_pred)
             k_pc = 0
-            separated_video = separate_video_activity(data_video[k_pc], clf_trial_idx)
+            separated_video = separate_video_activity(data_video[:, k_pc], clf_indexes)
 
             all_frames_scores[frame_time] = folds_eval_scores
             all_frames_roc[frame_time] = full_roc_auc
