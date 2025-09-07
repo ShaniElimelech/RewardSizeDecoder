@@ -134,6 +134,7 @@ class Video:
             os.makedirs(save_dir, exist_ok=True)
             video_save_path = os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.avi')
             self.save_as_video(video_save_path)
+            np.save(os.path.join(save_dir, 'neural_indexes.npy'), neural_indexes)
 
         if compute_neural_data:
             short_ndata = df_ndata.to_numpy()

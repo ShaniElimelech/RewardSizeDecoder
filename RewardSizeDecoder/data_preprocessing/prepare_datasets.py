@@ -65,26 +65,32 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
     assert len(reward_labels) == len(start_trials), ('Lengths of reward_labels and start_trials do not match, '
                                                   'please compare the lengths of original datasets in datajoint')
 
-    logger.debug('start video downsample and alignment')
-    # get aligned and downsampled video and neural frames indexes
-    # Initialize videos
-    video0 = Video(subject_id, session, camera_num=0, video_path=None)
-    video1 = Video(subject_id, session, camera_num=1, video_path=None)
-    # Align neural data to video data and downsample video
-    video0_array, neural_indexes = video0.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission,
-                                                               save_root=saveroot, compute_neural_data=False)
-    # once you computed neural array for one camera you dont need to repeat for the second
-    video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission,
-                                                 save_root=saveroot, compute_neural_data=False)
+    svd_path = os.path.join(saveroot, 'video_svd', f'{subject_id}', f'session{session}',
+                            f'v_temporal_dynamics_2cameras.npy')
+    neural_indexes_path = os.path.join(saveroot, 'downsampled_n_v_data', f'{subject_id}', f'session{session}',
+                                       f'neural_indexes.npy')
 
-    logger.info('finish video downsample and alignment')
-
-    svd_path = os.path.join(saveroot, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
-    if os.path.exists(svd_path):
+    # check if neural indexes and video svd already exist
+    if os.path.exists(svd_path) and os.path.exists(neural_indexes_path):
+        neural_indexes = np.load(neural_indexes_path)
         video_features = np.load(svd_path)
-        logger.info('video svd already exist -> finish loading svd')
+        logger.info('video svd and neural_indexes already exist -> finish loading svd')
 
     else:
+
+        logger.debug('start video downsample and alignment')
+        # get aligned and downsampled video and neural frames indexes
+        # Initialize videos
+        video0 = Video(subject_id, session, camera_num=0, video_path=None)
+        video1 = Video(subject_id, session, camera_num=1, video_path=None)
+        # Align neural data to video data and downsample video
+        video0_array, neural_indexes = video0.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission,
+                                                                   save_root=saveroot, compute_neural_data=False)
+        # once you computed neural array for one camera you dont need to repeat for the second
+        video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission,
+                                                     save_root=saveroot, compute_neural_data=False)
+
+        logger.info('finish video downsample and alignment')
         logger.debug('start video svd')
         # get video features - compute svd for combined cameras
         pair = VideoPair(subject_id, session, video0, video1)
