@@ -18,28 +18,43 @@ def _stack_fold_lists(series):
     return np.vstack(rows)  # (n_time, n_folds)
 
 
-def plot_mean_with_band(time_array, mean_vals, err_vals, title, savepath, ylabel="Score", err_label="±1 std"):
-    plt.figure(figsize=(10, 6))
-    plt.plot(time_array, mean_vals, label="mean")
-    plt.fill_between(time_array, mean_vals - err_vals, mean_vals + err_vals, alpha=0.25, label=err_label)
-    plt.title(title)
-    plt.xlabel("Time [s]")
-    plt.ylabel(ylabel)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(savepath)
-    plt.close()
+def plot_mean_with_band(time_array, mean_vals, err_vals, title, savepath, ylabel="Score", err_label="±1 std", tick_every=1, fmt="{:.1f}"):
+    time_array = np.asarray(time_array)
+    x = np.arange(len(time_array))
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(x, mean_vals, marker="o", label="mean")
+    ax.fill_between(x, mean_vals - err_vals, mean_vals + err_vals, alpha=0.25, label=err_label)
+
+    # Ticks correspond 1:1 to list entries
+    ax.set_xticks(x[::tick_every])
+    ax.set_xticklabels([fmt.format(t) for t in time_array[::tick_every]], rotation=45, ha="right")
+
+    ax.set_title(title)
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(ylabel)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(savepath, dpi=150)
+    plt.close(fig)
 
 
-def plot_score_over_time(yvals, time_array, title, savepath, ylabel="Score"):
-    plt.figure(figsize=(10, 6))
-    plt.plot(time_array, yvals)
-    plt.title(title)
-    plt.xlabel('Time [s]')
-    plt.ylabel(ylabel)
-    plt.tight_layout()
-    plt.savefig(savepath)
-    plt.close()
+def plot_score_over_time(yvals, time_array, title, savepath, ylabel="Score", tick_every=1, fmt="{:.1f}"):
+    time_array = np.asarray(time_array)
+    x = np.arange(len(time_array))
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(x, yvals, marker="o", label="mean")
+
+    # Ticks correspond 1:1 to list entries
+    ax.set_xticks(x[::tick_every])
+    ax.set_xticklabels([fmt.format(t) for t in time_array[::tick_every]], rotation=45, ha="right")
+
+    ax.set_title(title)
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(ylabel)
+    fig.tight_layout()
+    fig.savefig(savepath, dpi=150)
+    plt.close(fig)
 
 
 def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session, model, frame_bin, frame_rate,
@@ -68,13 +83,13 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
     # Iterate metrics (columns)
     for col in scores_df.columns:
         col_series = scores_df[col]
-        base_name = f'{col} score over time,subject{subject_id},session{session}'
-        savepath = os.path.join(savedir, base_name, '.png')
+        title = f'{col} score over time,subject{subject_id},session{session}'
+        savepath = os.path.join(savedir, title + '.png')
 
         if col == 'auc':
             # scalar per time bin → simple line plot
             yvals = col_series.astype(float).values
-            plot_score_over_time(yvals, time_array, base_name, savepath, ylabel="Score")
+            plot_score_over_time(yvals, time_array, title, savepath, ylabel="Score")
 
         else:
             mat = _stack_fold_lists(scores_df[col])  # (n_time, n_folds)
@@ -88,7 +103,7 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
             err_vals = std_vals / np.sqrt(n_eff)
             err_label = "±1 SEM"
 
-            plot_mean_with_band(time_array, mean_vals, err_vals, base_name, savepath, ylabel="Score", err_label=err_label)
+            plot_mean_with_band(time_array, mean_vals, err_vals, title, savepath, ylabel="Score", err_label=err_label)
 
             # optional: per-fold lines (can be helpful for debugging/QA)
             if also_plot_per_fold:
@@ -98,11 +113,11 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
                     plt.plot(time_array, mat[:, j], alpha=0.35, linewidth=1)
                 # overlay mean
                 plt.plot(time_array, mean_vals, linewidth=2)
-                plt.title(base_name + " (per-fold)")
+                plt.title(title + " (per-fold)")
                 plt.xlabel("Time [s]")
                 plt.ylabel("Score")
                 plt.tight_layout()
-                pf_path = os.path.join(savedir, base_name + ' (per-fold).png')
+                pf_path = os.path.join(savedir, title + ' (per-fold).png')
                 plt.savefig(pf_path)
                 plt.close()
 
@@ -143,7 +158,7 @@ def plot_results(savedir, scores_dic, roc_dic, subject_id, session, model, frame
     session : str or int
     model : str
     frame_bin : list[int]
-        Frame indices (or bins) in the same order you want plotted over time.
+        Frame indices that are being plotted.
     frame_rate : float
         Frames per second; used to convert frames to time (seconds).
     """

@@ -78,8 +78,8 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
         logger.info('video svd and neural_indexes already exist -> finish loading svd')
 
     else:
-
         logger.debug('start video downsample and alignment')
+        logger.info('start video downsample and alignment')
         # get aligned and downsampled video and neural frames indexes
         # Initialize videos
         video0 = Video(subject_id, session, camera_num=0, video_path=None)

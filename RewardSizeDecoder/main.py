@@ -227,6 +227,7 @@ class RewardSizeDecoder:
         all_frames_pc_separated = {}
         all_frames_best_params = {}
         bin_frames_dic = {}
+        frames_plot = []
         self.log.debug('start model training on all frames')
         self.log.info('start model training on all frames')
         for frame_idx, frame_time in enumerate(frames_bin):
@@ -258,6 +259,7 @@ class RewardSizeDecoder:
             if missing_video_trials > 0.3 or large_per < 0.05:
                 self.log.info(f'in frame idx {frame_idx}, time frame {frame_time}, there are more than {missing_video_trials} trials frames with missing video and {large_per} large trials')
                 continue
+            frames_plot.append(frame_time)
 
             # splits the data while conserving data distribution in each fold
             for train_index, test_index in skf.split(data_video, data_reward):
@@ -343,7 +345,7 @@ class RewardSizeDecoder:
             with open(fpath, "wb") as f:
                 pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        plot_results(self.saveroot, all_frames_scores, all_frames_roc, self.subject_id, self.session, self.model, frames_bin, self.frame_rate)
+        plot_results(self.saveroot, all_frames_scores, all_frames_roc, self.subject_id, self.session, self.model, frames_plot, self.frame_rate)
         self.log.info("Decoder finished in %.3fs", time.perf_counter() - t0)
         return bin_frames_dic
 
@@ -424,11 +426,17 @@ if __name__ == '__main__':
             frames_dic = decoder.decoder()
             all_sessions = {k: all_sessions.get(k, []) + [v] for k, v in frames_dic.items()}
             import matplotlib.pyplot as plt
+            from matplotlib.ticker import FixedLocator, FuncFormatter
 
             plt.figure(figsize=(10, 5))
             frames = list(frames_dic.keys())
             counts = list(frames_dic.values())
             plt.bar(frames, counts, color='gray')
+            step = 1  # change to 2/5/etc if labels crowd
+            ax = plt.gca()
+            ax.xaxis.set_major_locator(FixedLocator(frames[::step]))
+            ax.xaxis.set_major_formatter(FuncFormatter(lambda v, pos: f"{int(v)}"))
+            plt.xticks(rotation=45, ha='right')
             plt.xlabel('Frame (relative to event)')
             plt.ylabel('Missing Frame Count')
             plt.title(f'Missing Video Frames (subject {subject}, session{session})')
