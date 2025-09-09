@@ -17,6 +17,7 @@ def get_t_slice_video(start_trials, t_idx, video_array, neural_indexes, reward_l
     idx_trial_with_video_t_frame = np.flatnonzero(np.isin(t_trials, neural_indexes))
     # remove trials labels that do not have video frame correspond to t point
     labels_data = reward_labels[idx_trial_with_video_t_frame]
+
     return video_data, labels_data
 
 
@@ -91,11 +92,13 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
                                                      save_root=saveroot, compute_neural_data=False)
 
         logger.info('finish video downsample and alignment')
+
         logger.debug('start video svd')
         # get video features - compute svd for combined cameras
         pair = VideoPair(subject_id, session, video0, video1)
         video_features = pair.compute_svd(saveroot)[:, : num_features]  # shape: (frames, features) num all session frames x 50 first pc's
         logger.info('finish video svd')
+
 
     return start_trials, reward_labels, neural_indexes, video_features
 

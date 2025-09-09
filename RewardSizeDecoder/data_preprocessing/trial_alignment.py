@@ -70,7 +70,7 @@ def align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin, dj_
             licks_after_go = all_licks[all_licks > go_time[i_tr]]
 
         if len(licks_after_go) > 0:
-            start_file[i_tr] = TrialsStartFrame[i_tr] + int(float(licks_after_go[0]) * frame_rate) + int(
+            start_file[i_tr] = int(TrialsStartFrame[i_tr]) + int(float(licks_after_go[0]) * frame_rate) + int(
                 time_bin[0] * frame_rate)
             end_file[i_tr] = start_file[i_tr] + int(float(time_bin[1] - time_bin[0]) * frame_rate) - 1
             lick_tr_times_relative_to_first_lick_after_go.append(all_licks - licks_after_go[0])
