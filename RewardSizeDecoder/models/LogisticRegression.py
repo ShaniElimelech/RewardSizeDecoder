@@ -28,7 +28,6 @@ class LogisticRegressionModel:
             "class_weight": class_weight,
             "solver": solver,  # 'lbfgs' default solver (quasi newton, supports l2 regularization and multiclass)
             "penalty": penalty,  # Regularization penalty
-            "multi_class": 'auto',  # Automatic choice of multi-class approach
             "random_state": None
         }
 

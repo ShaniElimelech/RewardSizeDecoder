@@ -404,7 +404,7 @@ if __name__ == '__main__':
                 time_bin=(-2, 7),  # trial bin duration(sec)
                 missing_frames_lst=[7, 8, 9, 10],  # list of neural frames without corresponding video frames
                 original_video_path='Z:/',  # path to raw original video data - shared video folder located on Z drive
-                model="SVM",  # type of classification model to apply on data
+                model="LDA",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
                 user_model_params=user_model_params,
                 # model hyperparameters, if not specify then the default will be set/ apply parameters search
                 resample_method="combine undersample(random) and oversample(SMOTE)",
@@ -441,7 +441,7 @@ if __name__ == '__main__':
             plt.ylabel('Missing Frame Count')
             plt.title(f'Missing Video Frames (subject {subject}, session{session})')
             plt.tight_layout()
-            plt.show()
+            #plt.show()
 
 
     all_sessions = {k: sum(v)/ len(v)  for k, v in all_sessions.items()}
@@ -450,8 +450,13 @@ if __name__ == '__main__':
     frames = list(all_sessions.keys())
     counts = list(all_sessions.values())
     plt.bar(frames, counts, color='gray')
+    step = 1  # change to 2/5/etc if labels crowd
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(FixedLocator(frames[::step]))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, pos: f"{int(v)}"))
+    plt.xticks(rotation=45, ha='right')
     plt.xlabel('Frame (relative to event)')
     plt.ylabel('Missing Frame Count')
     plt.title('Missing Video Frames (All Sessions Combined)')
     plt.tight_layout()
-    plt.show()
+    #plt.show()
