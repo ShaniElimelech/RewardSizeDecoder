@@ -84,7 +84,7 @@ class LDA:
         probs_class1 = 1 / (1 + np.exp(-logit))
         return probs_class1
 
-    def compute_metrics(self, y_true, y_pred):
+    def compute_metrics(self, y_true):
         """Compute accuracy, precision, recall, F1 score, and specificity using confusion matrix."""
 
         tn, fp, fn, tp = confusion_matrix(y_true, self.y_pred).ravel()
