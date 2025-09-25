@@ -276,7 +276,7 @@ class RewardSizeDecoder:
             #y_pred = cross_val_predict(model, data_video, data_reward, cv=loo, method="predict")
             print(f"for subject {self.subject_id} - session {self.session} - frame{frame_time} - Mean accuracy:", scores.mean())
             '''
-
+            y=2
             from imblearn.pipeline import make_pipeline
             from imblearn.over_sampling import SMOTE
             from imblearn.under_sampling import RandomUnderSampler
