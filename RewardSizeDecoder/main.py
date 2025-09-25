@@ -1,4 +1,4 @@
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, KFold
 from data_preprocessing.prepare_datasets import load_clean_align_data, get_t_slice_video
 from data_preprocessing.resample_data import random_undersample, no_resample, predict_ensemble_proba, predict_ensemble, random_undersample_and_smote_oversample
 from models.LinearDiscriminantAnalysis import LDA
@@ -243,10 +243,11 @@ class RewardSizeDecoder:
             folds_eval_scores = {}
             clf_trial_idx = {}
             folds_params = {}
+            import numpy as np
             full_y_true = np.empty_like(data_reward, dtype=np.int64)
             full_y_pred = np.empty_like(data_reward, dtype=np.int64)
             full_y_probs = np.empty((len(data_reward)), dtype=np.float64)
-            skf = StratifiedKFold(n_splits=5)
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
             leftover_trials_len = len(data_reward)  # number of trials with video matching the neural frame
             missing_video_trials = round(1- leftover_trials_len/trials_len, 2)
@@ -260,6 +261,42 @@ class RewardSizeDecoder:
                 self.log.info(f'in frame idx {frame_idx}, time frame {frame_time}, there are more than {missing_video_trials} trials frames with missing video and {large_per} large trials')
                 continue
             frames_plot.append(frame_time)
+            '''
+            from sklearn.pipeline import make_pipeline
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.model_selection import cross_val_score, LeaveOneOut, cross_val_predict
+            from sklearn.metrics import recall_score, confusion_matrix
+
+            #model = LogisticRegression()
+            model = make_pipeline(StandardScaler(), LogisticRegression())
+            cv = KFold(n_splits=5)
+            loo = LeaveOneOut()
+            scores = cross_val_score(model, data_video, data_reward, cv=skf, scoring='recall')
+            #y_pred = cross_val_predict(model, data_video, data_reward, cv=loo, method="predict")
+            print(f"for subject {self.subject_id} - session {self.session} - frame{frame_time} - Mean accuracy:", scores.mean())
+            '''
+
+            from imblearn.pipeline import make_pipeline
+            from imblearn.over_sampling import SMOTE
+            from imblearn.under_sampling import RandomUnderSampler
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.model_selection import LeaveOneOut, cross_val_score
+            from sklearn.metrics import recall_score, confusion_matrix
+            import numpy as np
+
+            pipe = make_pipeline(
+                StandardScaler(),
+                #SMOTE(sampling_strategy=0.4, k_neighbors=1, random_state=42),
+                #RandomUnderSampler(sampling_strategy=0.6, random_state=42),
+                LogisticRegression(class_weight={0: 30, 1: 70})
+            )
+
+            scores = cross_val_score(pipe, data_video, data_reward, cv=skf, scoring='recall')
+            print(f"for subject {self.subject_id} - session {self.session} - frame{frame_time} - Mean accuracy:",
+                  scores.mean())
+
 
             # splits the data while conserving data distribution in each fold
             for train_index, test_index in skf.split(data_video, data_reward):
@@ -390,8 +427,8 @@ if __name__ == '__main__':
                             
     '''
 
-    subject_lst = [464724, 464725, 463189, 463190]
-    session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
+    subject_lst = [464725]  # [464724, 464725, 463189, 463190]
+    session_lists = [[2]]  #[[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
     all_sessions = {}
     for i, subject in enumerate(subject_lst):
         session_list = session_lists[i]
@@ -404,7 +441,7 @@ if __name__ == '__main__':
                 time_bin=(-2, 7),  # trial bin duration(sec)
                 missing_frames_lst=[7, 8, 9, 10],  # list of neural frames without corresponding video frames
                 original_video_path='Z:/',  # path to raw original video data - shared video folder located on Z drive
-                model="LDA",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
+                model="LR",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
                 user_model_params=user_model_params,
                 # model hyperparameters, if not specify then the default will be set/ apply parameters search
                 resample_method="combine undersample(random) and oversample(SMOTE)",

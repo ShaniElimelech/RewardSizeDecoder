@@ -128,11 +128,13 @@ class LogisticRegressionModel:
             return {'C': self.params['C'],
                     'max_iter': self.params['max_iter'],
                     'tol': self.params['tol'],
+                    'threshold': self.thresh,
                     'class_weight(positive)': self.params['class_weight'][1]}
         else:
             return {'C': self.params['C'],
                     'max_iter': self.params['max_iter'],
-                    'tol': self.params['tol']}
+                    'tol': self.params['tol'],
+                    'threshold': self.thresh}
 
     def compute_metrics(self, y_true):
         """Compute accuracy, precision, recall, F1 score, and specificity using confusion matrix."""
