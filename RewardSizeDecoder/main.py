@@ -275,7 +275,6 @@ class RewardSizeDecoder:
             scores = cross_val_score(model, data_video, data_reward, cv=skf, scoring='recall')
             #y_pred = cross_val_predict(model, data_video, data_reward, cv=loo, method="predict")
             print(f"for subject {self.subject_id} - session {self.session} - frame{frame_time} - Mean accuracy:", scores.mean())
-            '''
 
             from imblearn.pipeline import make_pipeline
             from imblearn.over_sampling import SMOTE
@@ -292,11 +291,10 @@ class RewardSizeDecoder:
                 #RandomUnderSampler(sampling_strategy=0.6, random_state=42),
                 LogisticRegression(class_weight={0: 30, 1: 70})
             )
-
             scores = cross_val_score(pipe, data_video, data_reward, cv=skf, scoring='recall')
             print(f"for subject {self.subject_id} - session {self.session} - frame{frame_time} - Mean accuracy:",
                   scores.mean())
-
+            '''
 
             # splits the data while conserving data distribution in each fold
             for train_index, test_index in skf.split(data_video, data_reward):
@@ -427,8 +425,8 @@ if __name__ == '__main__':
                             
     '''
 
-    subject_lst = [464725]  # [464724, 464725, 463189, 463190]
-    session_lists = [[2]]  #[[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
+    subject_lst = [464725] #[464724, 464725, 463189, 463190]
+    session_lists = [[1, 2, 6, 7, 8, 9]] # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
     all_sessions = {}
     for i, subject in enumerate(subject_lst):
         session_list = session_lists[i]
@@ -438,20 +436,20 @@ if __name__ == '__main__':
                 session=session,  # session number
                 num_features=200,  # number of predictive features from video
                 frame_rate=2,  # neural frame rate(Hz)
-                time_bin=(-2, 7),  # trial bin duration(sec)
+                time_bin=(-2, 5),  # trial bin duration(sec)
                 missing_frames_lst=[7, 8, 9, 10],  # list of neural frames without corresponding video frames
                 original_video_path='Z:/',  # path to raw original video data - shared video folder located on Z drive
                 model="LR",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
                 user_model_params=user_model_params,
                 # model hyperparameters, if not specify then the default will be set/ apply parameters search
-                resample_method="combine undersample(random) and oversample(SMOTE)",
+                resample_method="No resample",
                 # choose resample method to handle unbalanced data
                 dj_info=dj_info,  # data joint user credentials
-                save_folder_name="my_run",
+                save_folder_name="ignore_trials- 200 first pcs",
                 # choose new folder name for each time you run the model with different parameters
                 handle_omission='convert',
                 # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
-                clean_ignore=True,  # throw out ignore trials (trials in which the mouse was not responsive)
+                clean_ignore=False,  # throw out ignore trials (trials in which the mouse was not responsive)
             )
 
             decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)
@@ -461,6 +459,7 @@ if __name__ == '__main__':
 
 
             frames_dic = decoder.decoder()
+            '''
             all_sessions = {k: all_sessions.get(k, []) + [v] for k, v in frames_dic.items()}
             import matplotlib.pyplot as plt
             from matplotlib.ticker import FixedLocator, FuncFormatter
@@ -497,3 +496,4 @@ if __name__ == '__main__':
     plt.title('Missing Video Frames (All Sessions Combined)')
     plt.tight_layout()
     #plt.show()
+    '''
