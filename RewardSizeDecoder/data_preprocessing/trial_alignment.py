@@ -6,7 +6,7 @@ import numpy as np
 import time
 import seaborn as sns
 import matplotlib.pyplot as plt
-from .ExtractVideoNeuralAlignment import get_session_trials_aligned_frames, save_as_video
+from ExtractVideoNeuralAlignment import get_session_trials_aligned_frames, save_as_video
 from collections import defaultdict
 
 
@@ -38,9 +38,9 @@ def align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin, dj_
     trial_num = img_FrameStartTrial.fetch('trial', order_by='trial')
 
     if len(TrialsStartFrame) == 0:
-        TrialsStartFrame = (img.FrameStartFile & key).fetch('session_epoch_file_start_frame',
-                                                            order_by='session_epoch_file_num')
-        trial_num = ((exp2.BehaviorTrial & key) - tracking.VideoGroomingTrial).fetch('trial', order_by='trial')
+        img_FrameStartFile = get_restricted_table((img.FrameStartFile & key), restriction_list)
+        TrialsStartFrame = img_FrameStartFile.fetch('session_epoch_file_start_frame', order_by='session_epoch_file_num')
+        trial_num = img_FrameStartFile.fetch('trial', order_by='trial')
         TrialsStartFrame = TrialsStartFrame[trial_num]
 
     if flag_electric_video:
