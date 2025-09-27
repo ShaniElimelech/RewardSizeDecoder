@@ -22,15 +22,16 @@ def plot_video_groups(
     reward_size,
     session,
     subject_id,
-    saveroot,
+    savep,
     *,
     cmap="gray",
     dpi=300,
     thumb_per_inch=0.9,   # thumbnail display size (inches)
     avg_width_in_thumbs=4 # average panel width (in "thumb equivalents")
 ):
+
     # ---------- paths & title ----------
-    savepath = os.path.join(saveroot, 'video_groups')
+    savepath = os.path.join(savep, 'video_groups')
     os.makedirs(savepath, exist_ok=True)
     fname = f"frame time_{frame_time}_trial_{trial_num}_reward size_{reward_size}_session_{session}_subject_{subject_id}.png"
     saveimg = os.path.join(savepath, fname)
@@ -85,7 +86,7 @@ def plot_video_groups(
 
     # ---------- save ----------
     fig.savefig(saveimg, dpi=dpi, bbox_inches='tight')
-    fig.savefig(saveimg.replace(".png", ".pdf"), dpi=dpi, bbox_inches='tight')
+    #fig.savefig(saveimg.replace(".png", ".pdf"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -237,9 +238,11 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
                                                                    flag_electric_video=True)
     # get reward size labels
     handle_omission = 'keep'
-    reward_labels = get_reward_size_labels(subject_id, session, dj_modules, handle_omission, clean_ignore)
+    #reward_labels = get_reward_size_labels(subject_id, session, dj_modules, handle_omission, clean_ignore)
+    key = {'subject_id': subject_id, 'session': session}
+    reward_labels = ((exp2.TrialRewardSize & key) - tracking.TrackingTrialBad - tracking.VideoGroomingTrial).fetch('reward_size_type')
+    large_labels_idx = np.where(reward_labels == 'large')[0]
 
-    #ignore_mask = (exp2.BehaviorTrial & 'outcome="ignore"')
     key = {'subject_id': subject_id, 'session': session}
     outcome_table = ((exp2.BehaviorTrial & key) - tracking.TrackingTrialBad - tracking.VideoGroomingTrial).fetch('outcome')
     ignore_trails_idx = np.where(outcome_table == 'ignore')[0]
@@ -256,79 +259,87 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
         if dff_data.empty:
             raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
 
-    all_session_video_frames_groups = []
-    all_session_neural_frames = []
-    for index, row in trials_data.iterrows():
-        print(row['trial'])
-        trial_video_frames = get_trial_video_frames_groups(row, all_videos_path, subject_id, session_string, camera_num)
-        trial_neural_frames_indexes_with_video = row["trial_neural_frames_indexes"][:len(trial_video_frames)]
 
-        if compute_neural_data:
-            trial_neural_frames = get_trial_neural_frames(dff_data, row["trial_neural_frames_indexes"],
-                                                          len(trial_video_frames), drop_neural_frames_with_no_video)
-        else:
-            trial_neural_frames = None
+    for large_idx in ignore_trails_idx:
+        batch_idx = range(large_idx,large_idx+1)
+        all_session_video_frames_groups = []
+        all_session_neural_frames = []
+        for index, row in trials_data.iterrows():
+            if index not in batch_idx:
+                continue
+            print(row['trial'])
+            trial_video_frames = get_trial_video_frames_groups(row, all_videos_path, subject_id, session_string, camera_num)
+            trial_neural_frames_indexes_with_video = row["trial_neural_frames_indexes"][:len(trial_video_frames)]
 
-        all_session_video_frames_groups.extend(trial_video_frames)
-        all_session_neural_frames.extend(trial_neural_frames_indexes_with_video)
+            if compute_neural_data:
+                trial_neural_frames = get_trial_neural_frames(dff_data, row["trial_neural_frames_indexes"],
+                                                              len(trial_video_frames), drop_neural_frames_with_no_video)
+            else:
+                trial_neural_frames = None
 
-    time_frames = range(time_bin[0]* frame_rate, time_bin[1]* frame_rate +1)
-    for trial_idx in range(len(start_trials)):
-        trial_num = trials_data.iloc[trial_idx]['trial']
-        if trial_idx not in ignore_trails_idx:
-            if reward_labels[trial_idx+1] == 'large' and trial_idx+1 not in ignore_trails_idx:
-                reward_size_current = reward_labels[trial_idx]
-                reward_size_next = reward_labels[trial_idx+1]
-                print(f'trial {trial_idx}- {reward_size_current} -> {reward_size_next}')
+            all_session_video_frames_groups.extend(trial_video_frames)
+            all_session_neural_frames.extend(trial_neural_frames_indexes_with_video)
 
-                trial_video_frames_ave_current = []
-                trial_video_frames_ave_next = []
-                existing_video_frames = []
-                for i, time_frame in enumerate(time_frames):
-                    # current trial frame
-                    frame_current = start_trials[trial_idx] + i
-                    neural_frame_idx_current = np.where(np.array(all_session_neural_frames) == frame_current)[0]
-                    if len(neural_frame_idx_current) == 0:
-                        continue
-                    neural_frame_idx_current = neural_frame_idx_current[0]
-                    video_frames_group_current = all_session_video_frames_groups[neural_frame_idx_current]
-                    video_frame_ave_current = np.average(video_frames_group_current, axis=0)
+        time_frames = range(time_bin[0]* frame_rate, time_bin[1]* frame_rate +1)
+        for trial_idx in batch_idx:
+            if trial_idx != batch_idx[0]:
+                continue
+            trial_num = trials_data.iloc[trial_idx]['trial']
+            if trial_idx not in ignore_trails_idx:
+                if reward_labels[trial_idx+1] == 'large' and trial_idx+1 not in ignore_trails_idx:
+                    reward_size_current = reward_labels[trial_idx]
+                    reward_size_next = reward_labels[trial_idx+1]
+                    print(f'trial {trial_num}- {reward_size_current} -> {reward_size_next}')
 
-                    # next trial frame
-                    frame_next = start_trials[trial_idx+1] + i
-                    neural_frame_idx_next = np.where(np.array(all_session_neural_frames) == frame_next)[0]
-                    if len(neural_frame_idx_next) == 0:
-                        continue
-                    neural_frame_idx_next = neural_frame_idx_next[0]
-                    video_frames_group_next = all_session_video_frames_groups[neural_frame_idx_next]
-                    video_frame_ave_next = np.average(video_frames_group_next, axis=0)
-                    existing_video_frames.append(time_frame)
-                    trial_video_frames_ave_current.append(video_frame_ave_current)
-                    trial_video_frames_ave_next.append(video_frame_ave_next)
+                    trial_video_frames_ave_current = []
+                    trial_video_frames_ave_next = []
+                    existing_video_frames = []
+                    for i, time_frame in enumerate(time_frames):
+                        # current trial frame
+                        frame_current = start_trials[trial_idx] + i
+                        neural_frame_idx_current = np.where(np.array(all_session_neural_frames) == frame_current)[0]
+                        if len(neural_frame_idx_current) == 0:
+                            continue
+                        neural_frame_idx_current = neural_frame_idx_current[0]
+                        video_frames_group_current = all_session_video_frames_groups[neural_frame_idx_current]
+                        video_frame_ave_current = np.average(video_frames_group_current, axis=0)
 
-                    #plot_video_groups(video_frames_group_current, video_frame_ave_current, time_frame, trial_num, reward_size_current, session, subject_id, saveroot)
-                    #plot_video_groups(video_frames_group_next, video_frame_ave_next, time_frame, trial_num+1, reward_size_next, session, subject_id, saveroot)
+                        # next trial frame
+                        frame_next = start_trials[trial_idx+1] + i
+                        neural_frame_idx_next = np.where(np.array(all_session_neural_frames) == frame_next)[0]
+                        if len(neural_frame_idx_next) == 0:
+                            continue
+                        neural_frame_idx_next = neural_frame_idx_next[0]
+                        video_frames_group_next = all_session_video_frames_groups[neural_frame_idx_next]
+                        video_frame_ave_next = np.average(video_frames_group_next, axis=0)
+                        existing_video_frames.append(time_frame)
+                        trial_video_frames_ave_current.append(video_frame_ave_current)
+                        trial_video_frames_ave_next.append(video_frame_ave_next)
 
-                # plot pairs of consecutive trials video averages frames (regular\omission -> large)
-                plot_video_ave_for_pairs(trial_video_frames_ave_current, trial_video_frames_ave_next, existing_video_frames, trial_num, reward_size_current, reward_size_next,
-                                         session, subject_id, saveroot)
+                        plot_video_groups(video_frames_group_current, video_frame_ave_current, time_frame, trial_num, reward_size_current, session, subject_id, saveroot)
+                        plot_video_groups(video_frames_group_next, video_frame_ave_next, time_frame, trial_num+1, reward_size_next, session, subject_id, saveroot)
 
-        else:
-            # plot ignore trials frames
-            reward_size = reward_labels[trial_idx]
-            trial_video_frames_ave = []
-            saveroot_ignore = os.path.join(saveroot, 'ignore trials')
-            os.makedirs(saveroot_ignore, exist_ok=True)
-            for i,time_frame in enumerate(time_frames):
-                frame = start_trials[trial_idx] + i
-                neural_frame_idx = np.where(np.array(all_session_neural_frames) == frame)[0][0]
-                if neural_frame_idx is None:
-                    continue
-                video_frames_group = all_session_video_frames_groups[neural_frame_idx]
-                video_frame_ave = np.average(video_frames_group, axis=0)
-                trial_video_frames_ave.extend(video_frame_ave)
+                    # plot pairs of consecutive trials video averages frames (regular\omission -> large)
+                    plot_video_ave_for_pairs(trial_video_frames_ave_current, trial_video_frames_ave_next, existing_video_frames, trial_num, reward_size_current, reward_size_next,
+                                             session, subject_id, saveroot)
+                    break
 
-                plot_video_groups(video_frames_group, video_frame_ave, time_frame, trial_num, reward_size, session, subject_id, saveroot_ignore)
+            else:
+
+                # plot ignore trials frames
+                reward_size = reward_labels[trial_idx]
+                print(f'trial {trial_num}- {reward_size}')
+                trial_video_frames_ave = []
+                saveroot_ignore = os.path.join(saveroot, 'ignore trials')
+                os.makedirs(saveroot_ignore, exist_ok=True)
+                for i in range(len(all_session_video_frames_groups)):
+                    if i > 15:
+                        break
+                    video_frames_group = all_session_video_frames_groups[i]
+                    video_frame_ave = np.average(video_frames_group, axis=0)
+                    trial_video_frames_ave.append(video_frame_ave)
+
+                    plot_video_groups(video_frames_group, video_frame_ave, i, trial_num, reward_size, session, subject_id, saveroot_ignore)
 
 
 
