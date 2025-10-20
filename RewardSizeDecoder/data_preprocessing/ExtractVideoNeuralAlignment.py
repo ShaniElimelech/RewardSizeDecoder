@@ -18,7 +18,7 @@ def get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, came
             cap.release()
             time.sleep(1)
     else:
-        raise RuntimeError(f'Could not open video after 3 attempts - video file trial num:{video_file_trial_num}, camera:{camera_num}-'
+        raise RuntimeError(f'Could not open video after 3 attempts - video file trial num:{video_file_trial_num}, camera:{camera_num}, file_video_path:{trial_video_file_path}-'
                            f' please check if video file trial num exist, if it does then check opencv package')
 
     frames_lst = []

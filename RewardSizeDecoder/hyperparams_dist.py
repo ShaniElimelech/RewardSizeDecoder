@@ -45,7 +45,7 @@ def params_hist(data_path, model, subject_lst, session_lists):
 subject_lst =  [464724, 464725, 463189, 463190]
 session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 2, 3, 4, 9], [2, 3, 5, 6, 10]]
 model = 'LR'
-data_path = f'C:/Users/admin/Reward size decoder pipeline/RewardSizeDecoder/results/my_run'
+data_path = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/normalized B4 svd'
 params_hist(data_path, model, subject_lst, session_lists)
 
 

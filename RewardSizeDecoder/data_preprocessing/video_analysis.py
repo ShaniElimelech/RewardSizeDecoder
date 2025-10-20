@@ -10,8 +10,10 @@ import datajoint as dj
 import pandas as pd
 import math
 from matplotlib.gridspec import GridSpec
-from ExtractVideoNeuralAlignment import get_trials_data_table_for_mouse_session, get_dff_table_for_mouse_session, get_trial_video_frames_groups, get_trial_neural_frames
-from trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
+from ExtractVideoNeuralAlignment import get_trials_data_table_for_mouse_session, get_dff_table_for_mouse_session, \
+    get_trial_video_frames_groups, get_trial_neural_frames, get_all_trial_video_frames
+from RewardSizeDecoder.RewardSizeDecoder.data_preprocessing.video_binning import align_video_trials_test
+#from trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
 
 
 def plot_video_groups(
@@ -219,6 +221,35 @@ def plot_video_ave_for_pairs(
     plt.close(fig)
 
 
+def plot_video_frame(video_frame_ave_current, lick_frame, trial_num, reward_size, session, subject_id,saveroot_lick):
+    # Create figure
+    plt.figure(figsize=(6, 6))
+    plt.imshow(video_frame_ave_current, cmap='gray')
+    plt.axis('off')
+
+    # Title with metadata
+    title_str = (f"Subject: {subject_id} | Session: {session} | "
+                 f"Trial: {trial_num} | Reward: {reward_size} | "
+                 f"Lick Frame: {lick_frame}")
+    plt.title(title_str, fontsize=10)
+
+    # Ensure save directory exists
+    os.makedirs(saveroot_lick, exist_ok=True)
+
+    # File name with identifiers
+    filename = f"sub{subject_id}_sess{session}_trial{trial_num}_lick{lick_frame}.png"
+    savepath = os.path.join(saveroot_lick, filename)
+
+    # Save figure
+    plt.savefig(savepath, dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+
+
+
+
+
 def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_modules, original_video_path, time_bin, frame_rate, saveroot, clean_ignore=False,
                                       clean_omission=False, compute_neural_data=False, drop_neural_frames_with_no_video=True):
 
@@ -233,17 +264,13 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
         raise ValueError("Camera number must be 0 or 1!")
 
     # get trial new start and end frames - global alignment of trials to the first lick after go cue
-    start_trials, end_trials, _, _ = align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin,
-                                                                   dj_modules, clean_ignore, clean_omission,
-                                                                   flag_electric_video=True)
+    #start_trials, end_trials, _, _ = align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin,
+                                                                   #dj_modules, clean_ignore, clean_omission, flag_electric_video=True)
     # get reward size labels
-    handle_omission = 'keep'
-    #reward_labels = get_reward_size_labels(subject_id, session, dj_modules, handle_omission, clean_ignore)
     key = {'subject_id': subject_id, 'session': session}
     reward_labels = ((exp2.TrialRewardSize & key) - tracking.TrackingTrialBad - tracking.VideoGroomingTrial).fetch('reward_size_type')
     large_labels_idx = np.where(reward_labels == 'large')[0]
 
-    key = {'subject_id': subject_id, 'session': session}
     outcome_table = ((exp2.BehaviorTrial & key) - tracking.TrackingTrialBad - tracking.VideoGroomingTrial).fetch('outcome')
     ignore_trails_idx = np.where(outcome_table == 'ignore')[0]
 
@@ -253,36 +280,44 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
     if trials_data.empty:
         raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
 
-    dff_data = None
-    if compute_neural_data:
-        dff_data = get_dff_table_for_mouse_session(subject_id, session, img)
-        if dff_data.empty:
-            raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
-
-
-    for large_idx in ignore_trails_idx:
-        batch_idx = range(large_idx,large_idx+1)
+    for large_idx in large_labels_idx:
+    #for index, row in trials_data.iterrows():
+        if large_idx == 0:
+            continue
+        batch_idx = range(large_idx-2,large_idx+2)
+        trial_num_lst = [trials_data.loc[idx,'trial'] for idx in batch_idx]
+        start_trials = align_video_trials_test(trial_num_lst, subject_id, session, frame_rate, time_bin, dj_modules)
         all_session_video_frames_groups = []
         all_session_neural_frames = []
         for index, row in trials_data.iterrows():
             if index not in batch_idx:
                 continue
             print(row['trial'])
-            trial_video_frames = get_trial_video_frames_groups(row, all_videos_path, subject_id, session_string, camera_num)
-            trial_neural_frames_indexes_with_video = row["trial_neural_frames_indexes"][:len(trial_video_frames)]
+            #trial_video_frames = get_trial_video_frames_groups(row, all_videos_path, subject_id, session_string, camera_num)
+            #trial_neural_frames_indexes_with_video = row["trial_neural_frames_indexes"][:len(trial_video_frames)]
 
-            if compute_neural_data:
-                trial_neural_frames = get_trial_neural_frames(dff_data, row["trial_neural_frames_indexes"],
-                                                              len(trial_video_frames), drop_neural_frames_with_no_video)
-            else:
-                trial_neural_frames = None
+            # get video frames groups according to video alignment
+            video_file_trial_num = row["tracking_datafile_num"]
+            video_file_name = f"video_cam_{camera_num}_v{video_file_trial_num:03d}.avi"
+            trial_video_file_path = os.path.join(all_videos_path, f'{subject_id}', session_string, video_file_name)
+            trial_frame_list = get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, camera_num)
+            frames = np.array(trial_frame_list)
+            i = 0
+            jump = int(250 // frame_rate)
+            while i < len(trial_frame_list):
+                if i + jump < len(trial_frame_list):
+                    group_frame = frames[i:i + jump]
+                else:
+                    group_frame = frames[i:]
+                i = i + jump
+                all_session_video_frames_groups.append(group_frame)
 
-            all_session_video_frames_groups.extend(trial_video_frames)
-            all_session_neural_frames.extend(trial_neural_frames_indexes_with_video)
+            #all_session_video_frames_groups.extend(trial_video_frames)
+            #all_session_neural_frames.extend(trial_neural_frames_indexes_with_video)
 
         time_frames = range(time_bin[0]* frame_rate, time_bin[1]* frame_rate +1)
-        for trial_idx in batch_idx:
-            if trial_idx != batch_idx[0]:
+        for i_idx,trial_idx in enumerate(batch_idx):
+            if trial_idx != batch_idx[1]:
                 continue
             trial_num = trials_data.iloc[trial_idx]['trial']
             if trial_idx not in ignore_trails_idx:
@@ -290,11 +325,12 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
                     reward_size_current = reward_labels[trial_idx]
                     reward_size_next = reward_labels[trial_idx+1]
                     print(f'trial {trial_num}- {reward_size_current} -> {reward_size_next}')
-
                     trial_video_frames_ave_current = []
                     trial_video_frames_ave_next = []
                     existing_video_frames = []
+
                     for i, time_frame in enumerate(time_frames):
+                        '''
                         # current trial frame
                         frame_current = start_trials[trial_idx] + i
                         neural_frame_idx_current = np.where(np.array(all_session_neural_frames) == frame_current)[0]
@@ -302,7 +338,7 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
                             continue
                         neural_frame_idx_current = neural_frame_idx_current[0]
                         video_frames_group_current = all_session_video_frames_groups[neural_frame_idx_current]
-                        video_frame_ave_current = np.average(video_frames_group_current, axis=0)
+                        video_frame_ave_current = np.rint(video_frames_group_current.mean(axis=0)).astype(int)
 
                         # next trial frame
                         frame_next = start_trials[trial_idx+1] + i
@@ -311,10 +347,26 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
                             continue
                         neural_frame_idx_next = neural_frame_idx_next[0]
                         video_frames_group_next = all_session_video_frames_groups[neural_frame_idx_next]
-                        video_frame_ave_next = np.average(video_frames_group_next, axis=0)
+                        video_frame_ave_next = np.rint(video_frames_group_next.mean(axis=0)).astype(int)
                         existing_video_frames.append(time_frame)
                         trial_video_frames_ave_current.append(video_frame_ave_current)
                         trial_video_frames_ave_next.append(video_frame_ave_next)
+                        '''
+
+                        # current trial frame
+                        frame_current = int(start_trials[i_idx] + i)
+                        video_frames_group_current = all_session_video_frames_groups[frame_current]
+                        video_frame_ave_current = np.rint(video_frames_group_current.mean(axis=0)).astype(int)
+
+                        # next trial frame
+                        frame_next = int(start_trials[i_idx + 1] + i)
+                        video_frames_group_next = all_session_video_frames_groups[frame_next]
+                        video_frame_ave_next = np.rint(video_frames_group_next.mean(axis=0)).astype(int)
+
+                        existing_video_frames.append(time_frame)
+                        trial_video_frames_ave_current.append(video_frame_ave_current)
+                        trial_video_frames_ave_next.append(video_frame_ave_next)
+
 
                         plot_video_groups(video_frames_group_current, video_frame_ave_current, time_frame, trial_num, reward_size_current, session, subject_id, saveroot)
                         plot_video_groups(video_frames_group_next, video_frame_ave_next, time_frame, trial_num+1, reward_size_next, session, subject_id, saveroot)
@@ -323,23 +375,6 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
                     plot_video_ave_for_pairs(trial_video_frames_ave_current, trial_video_frames_ave_next, existing_video_frames, trial_num, reward_size_current, reward_size_next,
                                              session, subject_id, saveroot)
                     break
-
-            else:
-
-                # plot ignore trials frames
-                reward_size = reward_labels[trial_idx]
-                print(f'trial {trial_num}- {reward_size}')
-                trial_video_frames_ave = []
-                saveroot_ignore = os.path.join(saveroot, 'ignore trials')
-                os.makedirs(saveroot_ignore, exist_ok=True)
-                for i in range(len(all_session_video_frames_groups)):
-                    if i > 15:
-                        break
-                    video_frames_group = all_session_video_frames_groups[i]
-                    video_frame_ave = np.average(video_frames_group, axis=0)
-                    trial_video_frames_ave.append(video_frame_ave)
-
-                    plot_video_groups(video_frames_group, video_frame_ave, i, trial_num, reward_size, session, subject_id, saveroot_ignore)
 
 
 
@@ -356,7 +391,7 @@ def get_session_trials_aligned_frames(subject_id, session, camera_num, dj_module
 
 subject_id = 464724
 session = 4
-time_bin = (-2,5)
+time_bin = (-2,3)
 frame_rate = 2
 camera_num = 0
 
@@ -372,7 +407,7 @@ exp2 = dj.VirtualModule('EXP2', 'arseny_s1alm_experiment2')
 dj_modules = {'img': img, 'tracking': tracking, 'exp2': exp2, 'video_neural': video_neural}
 
 original_video_path = 'E:/Arseny_behavior_video'
-saveroot = 'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/video_analysis'
+saveroot = 'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/video_analysis/video alignment'
 os.makedirs(saveroot, exist_ok=True)
 
 get_session_trials_aligned_frames(subject_id, session, camera_num, dj_modules, original_video_path, time_bin, frame_rate, saveroot)

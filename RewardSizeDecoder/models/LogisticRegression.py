@@ -106,6 +106,7 @@ class LogisticRegressionModel:
         Learning parameters: w, b
         Hyperparameters: C (regularization strength), tol, max_iter, class_weight
         """
+        optuna.logging.set_verbosity(optuna.logging.ERROR)
         objective = self.make_objective(xtrain, ytrain)
         study = optuna.create_study(direction='maximize')
         study.optimize(objective, n_trials=50)

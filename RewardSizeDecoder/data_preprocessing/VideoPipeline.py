@@ -7,7 +7,9 @@ from scipy import stats as sc
 import pickle
 import datajoint as dj
 import pandas as pd
-from .ExtractVideoNeuralAlignment import get_session_trials_aligned_frames
+from .ExtractVideoNeuralAlignment import get_session_trials_aligned_frames, get_trials_data_table_for_mouse_session, get_all_trial_video_frames
+from scipy.ndimage import gaussian_filter1d
+from .block_svd import svd_in_blocks
 
 
 class Video:
@@ -120,8 +122,7 @@ class Video:
                                      ignore_index=True, axis=1)
 
             trial_video_frames = [
-                np.array(frames).mean(axis=0) for frames in trial_data['trial_video_frames_groups']
-            ]
+                np.rint(np.array(frames).mean(axis=0)).astype(int) for frames in trial_data['trial_video_frames_groups']]
             all_video_session.extend(trial_video_frames)
             neural_indexes.extend(trial_data['trial_neural_frames_indexes_with_video'])
 
@@ -143,6 +144,129 @@ class Video:
             return short_vdata, neural_indexes, short_ndata
 
         return short_vdata, neural_indexes
+
+    @ staticmethod
+    def downsample_by_block_average(video):
+        """
+        Downsample a grayscale video (T, H, W) spatially by factor of 2 using block averaging.
+        Automatically crops frames if dimensions are odd.
+        """
+        T, H, W = video.shape
+
+        # Ensure dimensions are even (auto-crop if needed)
+        if H % 2 != 0:
+            H -= 1  # crop last row
+            video = video[:, :H, :]
+        if W % 2 != 0:
+            W -= 1  # crop last column
+            video = video[:, :, :W]
+
+        # Reshape and block-average
+        downsampled = video.reshape(T, H // 2, 2, W // 2, 2).mean(axis=(2, 4))
+
+        # Preserve original dtype (e.g. uint8)
+        return np.rint(downsampled).astype(video.dtype)
+
+    @staticmethod
+    def crop_frames(video):
+        """
+        crop the top (two photon imaging) and left side (lick port) of the image
+        """
+        f, H, W = video.shape
+        y0, x0 = int(H // 10), int(W // 10)
+        crop_video = video[:, y0:, x0:]
+
+        return crop_video
+
+    def custom_video_downsampling(self, frame_rate, dj_modules, original_video_path, clean_ignore=False, clean_omission=False, save_root=None):
+        """
+        use when you want to downsample the video data to a different frame rate than neural data.
+       """
+        if save_root:
+            save_dir = os.path.join(save_root, 'downsampled_n_v_data', f'{self.subject_id}', f'session{self.session}')
+            if os.path.exists(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy')):
+                self.video_array = np.load(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy'))
+                self.loaded = True
+                return
+
+        all_video_session = []
+        video_neural = dj_modules['video_neural']
+        tracking = dj_modules['tracking']
+        exp2 = dj_modules['exp2']
+
+        session_string = f"session{self.session}"
+        all_videos_path = original_video_path
+        if self.camera_num not in [0, 1]:
+            raise ValueError("Camera number must be 0 or 1!")
+
+        # Get data from DataJoint
+        trials_data = get_trials_data_table_for_mouse_session(self.subject_id, self.session, self.camera_num, tracking, video_neural,
+                                                              exp2, clean_ignore, clean_omission)
+        if trials_data.empty:
+            raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
+
+        for index, row in trials_data.iterrows():
+            video_file_trial_num = row["tracking_datafile_num"]
+            video_file_name = f"video_cam_{self.camera_num}_v{video_file_trial_num:03d}.avi"
+            trial_video_file_path = os.path.join(all_videos_path, f'{self.subject_id}', session_string, video_file_name)
+            trial_frame_list = get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, self.camera_num)
+            frames = np.array(trial_frame_list)
+            i = 0
+            jump = int(250 // frame_rate)
+            while i < len(trial_frame_list):
+                if i+jump < len(trial_frame_list):
+                    ave_frame = np.rint(frames[i:i + jump].mean(axis=0)).astype(int)
+                else:
+                    ave_frame = np.rint(frames[i:].mean(axis=0)).astype(int)
+                all_video_session.append(ave_frame)
+                i = i + jump
+
+        short_vdata = np.array(all_video_session)
+        if self.camera_num == 0:  # crop only the side camera
+            short_vdata = self.crop_frames(short_vdata)
+        short_vdata = self.downsample_by_block_average(short_vdata)
+        if save_root:
+            os.makedirs(save_dir, exist_ok=True)
+            np.save(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy'), short_vdata)
+
+        self.video_array = short_vdata
+        self.loaded = True
+
+    def gaussian_smooth_and_resample(self, frame_rate, dj_modules, original_video_path, clean_ignore=False, clean_omission=False):
+        """
+        smooth video data using gaussian and then resample to a frame rate of your choice.
+        """
+        all_video_session = []
+        video_neural = dj_modules['video_neural']
+        tracking = dj_modules['tracking']
+        exp2 = dj_modules['exp2']
+
+        session_string = f"session{self.session}"
+        all_videos_path = original_video_path
+        if self.camera_num not in [0, 1]:
+            raise ValueError("Camera number must be 0 or 1!")
+
+        # Get data from DataJoint
+        trials_data = get_trials_data_table_for_mouse_session(self.subject_id, self.session, self.camera_num, tracking, video_neural, exp2, clean_ignore, clean_omission)
+        if trials_data.empty:
+            raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
+
+        for index, row in trials_data.iterrows():
+            video_file_trial_num = row["tracking_datafile_num"]
+            video_file_name = f"video_cam_{self.camera_num}_v{video_file_trial_num:03d}.avi"
+            trial_video_file_path = os.path.join(all_videos_path, f'{self.subject_id}', session_string, video_file_name)
+            trial_frame_list = np.array(get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, self.camera_num))
+            original_video_rate = 250
+            sigma = 0.7 * (original_video_rate / frame_rate)
+            smoothed_video = gaussian_filter1d(trial_frame_list, sigma=sigma, axis=0, mode='mirror', truncate=4.0)
+            step = 250// frame_rate
+            smooth_video = smoothed_video[::step]
+            all_video_session.extend(smooth_video)
+
+        short_vdata = np.array(all_video_session)
+        self.video_array = short_vdata
+        self.loaded = True
+
 
 
 class VideoPair:
@@ -169,21 +293,58 @@ class VideoPair:
             return np.concatenate((flat0, flat1), axis=1)
         return flat0
 
-    def compute_svd(self, save_root=None):
+    def compute_svd(self, frame_rate, save_root=None):
         video_matrix = self.concatenate_flattened()
 
+        '''
         # Remove zero-variance pixels
         std = np.std(video_matrix, axis=0)
         mask = std >= 1e-4
-        # normalized = np.zeros_like(video_matrix)
-        # normalized[:, mask] = sc.zscore(video_matrix[:, mask], axis=0)
 
-        centered_video = np.zeros_like(video_matrix)
-        centered_video[:, mask] = np.mean(video_matrix[:, mask], axis=0)
+        normalized = np.zeros_like(video_matrix)
+        normalized[:, mask] = sc.zscore(video_matrix[:, mask], axis=0)
+        '''
 
-        U, S, VT = np.linalg.svd(centered_video, full_matrices=False)
-        explained_var = (S ** 2) / np.sum(S ** 2)
-        num_components = np.argmax(np.cumsum(explained_var) >= 0.9) + 1
+        X = np.asarray(video_matrix, dtype=np.float32, order="C")
+
+        std = X.std(axis=0)
+        mask = std >= 1e-4
+        cols = np.where(mask)[0]
+
+        # Normalize in-place, columnwise, in small blocks to cap memory
+        block = 2048
+        eps = 1e-12
+        for i in range(0, len(cols), block):
+            c = cols[i:i + block]
+            m = X[:, c].mean(axis=0, dtype=np.float32)
+            s = X[:, c].std(axis=0, dtype=np.float32)
+            s = np.maximum(s, eps)  # avoid div-by-zero
+            X[:, c] -= m  # in-place center
+            X[:, c] /= s  # in-place scale
+
+        X[:, ~mask] = 0.0
+        normalized = X  # already normalized
+
+        #centered_video = np.zeros_like(video_matrix)
+        #centered_video[:, mask] = np.mean(video_matrix[:, mask], axis=0)
+
+
+        U, S, VT = np.linalg.svd(normalized, full_matrices=False)
+        #explained_var = (S ** 2) / np.sum(S ** 2)
+        #num_components = np.argmax(np.cumsum(explained_var) >= 0.9) + 1
+
+        '''
+        n_segments = int(frame_rate //2)
+        # get U @ S from svd in blocks algorithm
+        U, VT = svd_in_blocks(
+            video_matrix,
+            n_segments,
+            P=video_matrix.shape[1],
+            k_seg=300,
+            k_global=500,
+            dtype=np.float32,
+        )
+        '''
 
         if save_root:
             save_dir = os.path.join(save_root, 'video_svd', f'{self.subject_id}', f'session{self.session}')
@@ -192,12 +353,13 @@ class VideoPair:
             with open(os.path.join(save_dir, f'OG_shape_{int(self.two_cams) + 1}cameras.pkl'), 'wb') as f:
                 pickle.dump(self.shapes, f)
 
-            np.save(os.path.join(save_dir, f'num_components_0.9_{int(self.two_cams) + 1}cameras'), num_components)
-            np.save(os.path.join(save_dir, f'v_singular_values_{int(self.two_cams) + 1}cameras'), S[:500])
+            #np.save(os.path.join(save_dir, f'num_components_0.9_{int(self.two_cams) + 1}cameras'), num_components)
+            #np.save(os.path.join(save_dir, f'v_singular_values_{int(self.two_cams) + 1}cameras'), S[:500])
             np.save(os.path.join(save_dir, f'v_spatial_dynamics_{int(self.two_cams) + 1}cameras'), VT[:500])
             np.save(os.path.join(save_dir, f'v_temporal_dynamics_{int(self.two_cams) + 1}cameras'), U[:, :500])
 
             self.plot_principal_components(VT, save_dir)
+            #self.plot_variance(explained_var, save_dir)
 
         return U
 
@@ -214,14 +376,53 @@ class VideoPair:
             cutoff += pixels
 
             fig, axes = plt.subplots(2, 3, figsize=(18, 8))
-            pcs = [0, 1, 2, 5, 10, 500]
+            pcs = [0, 1, 2, 3, 4, 5]
             for ax, pc in zip(axes.flatten(), pcs):
-                im = ax.imshow(np.abs(pc_weights[pc]), cmap='Purples')
+                im = ax.imshow(np.abs(pc_weights[pc]), cmap='inferno')
                 ax.set_title(f'Principal Component no.{pc}')
                 fig.colorbar(im, ax=ax)
             plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, f'{cam_name}_pcs_weights.png'))
+            plt.savefig(os.path.join(save_dir, f'{cam_name}_pcs_weights_1.png'))
             plt.close()
+            fig, axes = plt.subplots(2, 3, figsize=(18, 8))
+            pcs = [6, 7, 8, 9, 10, 20]
+            for ax, pc in zip(axes.flatten(), pcs):
+                im = ax.imshow(np.abs(pc_weights[pc]), cmap='inferno')
+                ax.set_title(f'Principal Component no.{pc}')
+                fig.colorbar(im, ax=ax)
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f'{cam_name}_pcs_weights_2.png'))
+            plt.close()
+            fig, axes = plt.subplots(2, 3, figsize=(18, 8))
+            pcs = [100, 150, 200, 250, 300, 500]
+            for ax, pc in zip(axes.flatten(), pcs):
+                im = ax.imshow(np.abs(pc_weights[pc]), cmap='inferno')
+                ax.set_title(f'Principal Component no.{pc}')
+                fig.colorbar(im, ax=ax)
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f'{cam_name}_pcs_weights_3.png'))
+            plt.close()
+
+
+    def plot_variance(self, explained_var, save_dir):
+        # plot variance explained
+        plt.figure()
+        plt.plot(explained_var)
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.savefig(os.path.join(save_dir, f'{int(self.two_cams) + 1}cameras_ve.png'))
+        plt.close()
+
+        # plot cumulative variance explained
+        # Compute cumulative sum
+        cumulative = np.cumsum(explained_var)
+        plt.plot(cumulative)
+        plt.title("Cumulative Sum of variance explained")
+        plt.xlabel("pc number")
+        plt.ylabel("Cumulative VE")
+        plt.grid(True)
+        plt.savefig(os.path.join(save_dir, f'{int(self.two_cams) + 1}cameras_cumulative_ve.png'))
+        plt.close()
 
 
 if __name__ == '__main__':

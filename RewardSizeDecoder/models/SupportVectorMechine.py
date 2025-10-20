@@ -102,6 +102,7 @@ class SVM:
         Using Optuna for hyperparameter tuning.
         Hyperparameters: C, kernel, degree, gamma, coef0, class_weight
         """
+        optuna.logging.set_verbosity(optuna.logging.ERROR)
         objective = self.make_objective(xtrain, ytrain)
         study = optuna.create_study(direction='maximize')
         study.optimize(objective, n_trials=50)

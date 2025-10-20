@@ -23,12 +23,29 @@ def plot_mean_with_band(time_array, mean_vals, err_vals, title, savepath, ylabel
     x = np.arange(len(time_array))
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(x, mean_vals, marker="o", label="mean")
+    ax.plot(x, mean_vals, linestyle="-", label="mean")
     ax.fill_between(x, mean_vals - err_vals, mean_vals + err_vals, alpha=0.25, label=err_label)
+    # Vertical line at time = 0
+    zero_idx = np.where(time_array == 0)[0][0]
+    ax.axvline(x=zero_idx, linestyle="--", linewidth=1, label="t = 0")
+    # --- Compute mean and max in the -10 to -2s window ---
+    mask = (time_array >= -10) & (time_array < -2)
+    if np.any(mask):
+        avg_val = np.mean(mean_vals[mask])
+        max_val = np.max(mean_vals[mask])
+        # Add horizontal lines
+        ax.axhline(avg_val, linestyle="--", color='black', linewidth=1, label=f"Avg baseline (-10 to -2s)")
+        ax.axhline(max_val, linestyle="--", color='red', linewidth=1, label=f"Max baseline (-10 to -2s)")
 
     # Ticks correspond 1:1 to list entries
-    ax.set_xticks(x[::tick_every])
-    ax.set_xticklabels([fmt.format(t) for t in time_array[::tick_every]], rotation=45, ha="right")
+    #ax.set_xticks(x[::tick_every])
+    #ax.set_xticklabels([fmt.format(t) for t in time_array[::tick_every]], rotation=45, ha="right")
+    int_indices = [i for i, t in enumerate(time_array) if float(t).is_integer()]
+    int_times = [int(t) for t in time_array[int_indices]]
+
+    # Apply integer ticks
+    ax.set_xticks(int_indices)
+    ax.set_xticklabels(int_times, rotation=45, ha="right")
 
     ax.set_title(title)
     ax.set_xlabel("Time [s]")
@@ -43,15 +60,33 @@ def plot_score_over_time(yvals, time_array, title, savepath, ylabel="Score", tic
     time_array = np.asarray(time_array)
     x = np.arange(len(time_array))
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(x, yvals, marker="o", label="mean")
+    ax.plot(x, yvals, linestyle="-", label="mean")
+    # Vertical line at time = 0
+    zero_idx = np.where(time_array == 0)[0][0]
+    ax.axvline(x=zero_idx, linestyle="--", linewidth=1, label="t = 0")
+    # --- Compute mean and max in the -10 to -2s window ---
+    mask = (time_array >= -10) & (time_array < -2)
+    if np.any(mask):
+        avg_val = np.mean(yvals[mask])
+        max_val = np.max(yvals[mask])
+        # Add horizontal lines
+        ax.axhline(avg_val, linestyle="--", color='black',linewidth=1, label=f"Avg baseline (-10 to -2s)")
+        ax.axhline(max_val, linestyle="--", color='red', linewidth=1, label=f"Max baseline (-10 to -2s)")
 
     # Ticks correspond 1:1 to list entries
-    ax.set_xticks(x[::tick_every])
-    ax.set_xticklabels([fmt.format(t) for t in time_array[::tick_every]], rotation=45, ha="right")
+    #ax.set_xticks(x[::tick_every])
+    #ax.set_xticklabels([fmt.format(t) for t in time_array[::tick_every]], rotation=45, ha="right")
+    int_indices = [i for i, t in enumerate(time_array) if float(t).is_integer()]
+    int_times = [int(t) for t in time_array[int_indices]]
+
+    # Apply integer ticks
+    ax.set_xticks(int_indices)
+    ax.set_xticklabels(int_times, rotation=45, ha="right")
 
     ax.set_title(title)
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(ylabel)
+    ax.legend()
     fig.tight_layout()
     fig.savefig(savepath, dpi=150)
     plt.close(fig)
@@ -89,7 +124,7 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
         if col == 'auc':
             # scalar per time bin → simple line plot
             yvals = col_series.astype(float).values
-            plot_score_over_time(yvals, time_array, title, savepath, ylabel="Score")
+            plot_score_over_time(yvals, time_array, title, savepath, ylabel=f"{col} score")
 
         else:
             mat = _stack_fold_lists(scores_df[col])  # (n_time, n_folds)
@@ -103,7 +138,7 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
             err_vals = std_vals / np.sqrt(n_eff)
             err_label = "±1 SEM"
 
-            plot_mean_with_band(time_array, mean_vals, err_vals, title, savepath, ylabel="Score", err_label=err_label)
+            plot_mean_with_band(time_array, mean_vals, err_vals, title, savepath, ylabel=f"{col} score", err_label=err_label)
 
             # optional: per-fold lines (can be helpful for debugging/QA)
             if also_plot_per_fold:
