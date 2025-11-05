@@ -54,7 +54,7 @@ def plot_score_over_time(ave_session, stem_session, frame_rate, title, save_path
 
 
 def scores_ave(datapath, model, subject_lst, session_lists, frame_rate, param, metric):
-    savepath = os.path.join(datapath, 'figures', f'Decoder {model} output', 'averages')
+    savepath = os.path.join(datapath, 'figures_50_50_ratio', f'Decoder {model} output', 'averages')
     os.makedirs(savepath, exist_ok=True)
     all_animals_all_time = {}
     for i, subject in enumerate(subject_lst):
@@ -90,10 +90,11 @@ def scores_ave(datapath, model, subject_lst, session_lists, frame_rate, param, m
 
 
 metrics = ['scores', 'roc']
-param = 'auc'
+params = ['auc', 'accuracy', 'precision', 'recall']
+param = 'recall'
 subject_lst =  [464724, 464725, 463189, 463190]
-session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 2, 3, 4, 9], [2, 3, 5, 6, 10]]
+session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 8, 9], [1, 2, 3, 9], [2, 3, 5, 6, 10]]  # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 2, 3, 4, 9], [2, 3, 5, 6, 10]]
 model = 'LR'
-frame_rate = 2
-data_path = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/500 ms bin'
-scores_ave(data_path, model, subject_lst, session_lists, frame_rate, param, metric='roc')
+frame_rate = 5
+data_path = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/cropped- video frame rate 5 Hz'
+scores_ave(data_path, model, subject_lst, session_lists, frame_rate, param, metric='scores')

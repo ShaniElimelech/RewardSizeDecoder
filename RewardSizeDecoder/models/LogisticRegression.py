@@ -15,7 +15,7 @@ class LogisticRegressionModel:
                  solver='lbfgs',
                  C=1.0,
                  tol=1e-4,
-                 max_iter=100,
+                 max_iter=500,
                  class_weight=None,
                  custom_class_weights=True,
                  thresh=0.5
