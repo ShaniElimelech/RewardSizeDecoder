@@ -161,8 +161,8 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
         # once you computed neural array for one camera you dont need to repeat for the second
         #video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot, compute_neural_data=False)
 
-        video0.custom_video_downsampling(frame_rate, dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot)
-        video1.custom_video_downsampling(frame_rate, dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot)
+        video0.custom_temporal_downsampling(frame_rate, dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot)
+        video1.custom_temporal_downsampling(frame_rate, dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot)
 
         logger.info('finish video downsample and alignment')
 

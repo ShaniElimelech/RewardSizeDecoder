@@ -10,8 +10,8 @@ def no_resample(X, y):
 
 def random_undersample_and_smote_oversample(X_train, y_train):
     # Define resampling steps
-    over = SMOTE(sampling_strategy=0.4, random_state=42)  # Increase minority class to ~40%
-    under = RandomUnderSampler(sampling_strategy=0.6, random_state=42)  # Reduce majority class to ~60%
+    over = SMOTE(sampling_strategy=0.4, random_state=42)  # minority/majority = ~40% by increasing minority
+    under = RandomUnderSampler(sampling_strategy=0.6, random_state=42)  # minority/majority = ~60% by dicreasing majority
 
     # Combine in a pipeline
     pipeline = Pipeline(steps=[('o', over), ('u', under)])

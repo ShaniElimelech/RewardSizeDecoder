@@ -90,6 +90,40 @@ class Video:
         # Release the VideoWriter to save the video file
         out.release()
 
+    def create_full_video_array(self, dj_modules, original_video_path, clean_ignore=False, clean_omission=False):
+        """
+        retrieve from hard disk all video trials and join them into a full video session array
+        """
+        all_video_session = []
+        video_neural = dj_modules['video_neural']
+        tracking = dj_modules['tracking']
+        exp2 = dj_modules['exp2']
+
+        session_string = f"session{self.session}"
+        all_videos_path = original_video_path
+        if self.camera_num not in [0, 1]:
+            raise ValueError("Camera number must be 0 or 1!")
+
+        # Get data from DataJoint
+        trials_data = get_trials_data_table_for_mouse_session(self.subject_id, self.session, self.camera_num, tracking, video_neural,
+                                                              exp2, clean_ignore, clean_omission)
+        if trials_data.empty:
+            raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
+
+        for index, row in trials_data.iterrows():
+            if index == 16:
+                break
+            video_file_trial_num = row["tracking_datafile_num"]
+            video_file_name = f"video_cam_{self.camera_num}_v{video_file_trial_num:03d}.avi"
+            trial_video_file_path = os.path.join(all_videos_path, f'{self.subject_id}', session_string, video_file_name)
+            trial_frame_list = get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, self.camera_num)
+            frames = np.array(trial_frame_list)
+            all_video_session.append(frames)
+
+        short_vdata = np.array(all_video_session)
+        self.video_array = short_vdata
+        self.loaded = True
+
     def align_with_neural_data(self, dj_modules, original_video_path, clean_ignore=False, clean_omission=False,
                                save_root=None, compute_neural_data=True):
         """
@@ -145,40 +179,55 @@ class Video:
 
         return short_vdata, neural_indexes
 
-    @ staticmethod
-    def downsample_by_block_average(video):
+    def downsample_by_block_average(self, factor):
         """
         Downsample a grayscale video (T, H, W) spatially by factor of 2 using block averaging.
         Automatically crops frames if dimensions are odd.
         """
-        T, H, W = video.shape
+        video = self.video_array
+        T, H, W = video
 
         # Ensure dimensions are even (auto-crop if needed)
-        if H % 2 != 0:
-            H -= 1  # crop last row
+        residual_H = H % factor
+        residual_W = W % factor
+
+        if residual_H != 0:
+            H -= residual_H  # crop last row
             video = video[:, :H, :]
-        if W % 2 != 0:
-            W -= 1  # crop last column
+        if residual_W != 0:
+            W -= residual_W  # crop last column
             video = video[:, :, :W]
 
         # Reshape and block-average
-        downsampled = video.reshape(T, H // 2, 2, W // 2, 2).mean(axis=(2, 4))
+        downsampled = video.reshape(T, H // factor, factor, W // factor, factor).mean(axis=(2, 4))
 
         # Preserve original dtype (e.g. uint8)
-        return np.rint(downsampled).astype(video.dtype)
+        self.video_array = np.rint(downsampled).astype(self.video_array.dtype)
 
-    @staticmethod
-    def crop_frames(video):
+    def crop_frames(self, new_H=None, new_W=None):
         """
         crop the top (two photon imaging) and left side (lick port) of the image
         """
-        f, H, W = video.shape
-        y0, x0 = int(H // 10), int(W // 10)
-        crop_video = video[:, y0:, x0:]
+        f, H, W = self.video_array.shape
+        if new_H or new_W is None:
+            y0, x0 = int(H // 10), int(W // 10)
+        else:
+            y0, x0 = H - new_H, W - new_W
 
-        return crop_video
+        crop_video = self.video_array[:, y0:, x0:]
+        self.video_array = crop_video
 
-    def custom_video_downsampling(self, frame_rate, dj_modules, original_video_path, clean_ignore=False, clean_omission=False, save_root=None):
+    def pad_frames(self, new_H=128, new_W=128):
+        f, H, W = self.video_array.shape
+        right_pad = (new_W - W) // 2
+        left_pad = new_W - W - right_pad
+        top_pad = (new_H - H) // 2
+        bottom_pad = new_H - H - top_pad
+
+        pads = ((bottom_pad, top_pad), (left_pad, right_pad))  # (top,bottom), (left,right)
+        self.video_array.shape = np.pad(self.video_array.shape, pads, mode='edge')
+
+    def custom_temporal_downsampling(self, frame_rate, save_root=None):
         """
         use when you want to downsample the video data to a different frame rate than neural data.
        """
@@ -189,42 +238,20 @@ class Video:
                 self.loaded = True
                 return
 
-        all_video_session = []
-        video_neural = dj_modules['video_neural']
-        tracking = dj_modules['tracking']
-        exp2 = dj_modules['exp2']
+        downsample_video = []
+        frames = self.video_array
+        i = 0
+        jump = int(250 // frame_rate)
+        while i < len(frames):
+            if i+jump < len(frames):
+                ave_frame = np.rint(frames[i:i + jump].mean(axis=0)).astype(int)
+            else:
+                ave_frame = np.rint(frames[i:].mean(axis=0)).astype(int)
+            downsample_video.append(ave_frame)
+            i = i + jump
 
-        session_string = f"session{self.session}"
-        all_videos_path = original_video_path
-        if self.camera_num not in [0, 1]:
-            raise ValueError("Camera number must be 0 or 1!")
+        short_vdata = np.array(downsample_video)
 
-        # Get data from DataJoint
-        trials_data = get_trials_data_table_for_mouse_session(self.subject_id, self.session, self.camera_num, tracking, video_neural,
-                                                              exp2, clean_ignore, clean_omission)
-        if trials_data.empty:
-            raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
-
-        for index, row in trials_data.iterrows():
-            video_file_trial_num = row["tracking_datafile_num"]
-            video_file_name = f"video_cam_{self.camera_num}_v{video_file_trial_num:03d}.avi"
-            trial_video_file_path = os.path.join(all_videos_path, f'{self.subject_id}', session_string, video_file_name)
-            trial_frame_list = get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, self.camera_num)
-            frames = np.array(trial_frame_list)
-            i = 0
-            jump = int(250 // frame_rate)
-            while i < len(trial_frame_list):
-                if i+jump < len(trial_frame_list):
-                    ave_frame = np.rint(frames[i:i + jump].mean(axis=0)).astype(int)
-                else:
-                    ave_frame = np.rint(frames[i:].mean(axis=0)).astype(int)
-                all_video_session.append(ave_frame)
-                i = i + jump
-
-        short_vdata = np.array(all_video_session)
-        if self.camera_num == 0:  # crop only the side camera
-            short_vdata = self.crop_frames(short_vdata)
-        short_vdata = self.downsample_by_block_average(short_vdata)
         if save_root:
             os.makedirs(save_dir, exist_ok=True)
             np.save(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy'), short_vdata)
