@@ -322,15 +322,6 @@ class VideoPair:
     def compute_svd(self, frame_rate, save_root=None):
         video_matrix = self.concatenate_flattened()
 
-        '''
-        # Remove zero-variance pixels
-        std = np.std(video_matrix, axis=0)
-        mask = std >= 1e-4
-
-        normalized = np.zeros_like(video_matrix)
-        normalized[:, mask] = sc.zscore(video_matrix[:, mask], axis=0)
-        '''
-
         X = np.asarray(video_matrix, dtype=np.float32, order="C")
 
         std = X.std(axis=0)
