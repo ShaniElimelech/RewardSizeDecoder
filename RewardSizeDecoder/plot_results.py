@@ -98,7 +98,7 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
     error_type: "sem" (standard error of the mean)
     also_plot_per_fold: if True, plots each fold as a thin line (separate files, same directory)
     """
-    savedir = os.path.join(savedir, 'figures', f'Decoder {model} output', 'all_scores_over_time')
+    savedir = os.path.join(savedir, 'figures_50_50_ratio', f'Decoder {model} output', 'all_scores_over_time')
     os.makedirs(savedir, exist_ok=True)
 
     # time axis

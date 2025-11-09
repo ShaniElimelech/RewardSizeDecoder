@@ -34,6 +34,7 @@ class RewardSizeDecoder:
                  save_folder_name,
                  handle_omission,
                  clean_ignore,
+                 find_parameters=True,
                  verbose=False
                  ):
 
@@ -51,6 +52,7 @@ class RewardSizeDecoder:
         self.save_folder_name = save_folder_name
         self.handle_omission = handle_omission
         self.clean_ignore = clean_ignore
+        self.find_parameters = find_parameters
         self.saveroot = None
 
         # base logger (handlers & formatting)
@@ -354,7 +356,7 @@ class RewardSizeDecoder:
                 else:
                     X_train_us, y_train_us = resample_dict[self.resample_method](X_train, y_train)
                     clf = model_dict[self.model](**user_model_params[self.model])
-                    if self.model in ['SVM', 'LR']:
+                    if self.model in ['SVM', 'LR'] and self.find_parameters:
                         clf.find_best_params(X_train_us, y_train_us)
                         best_params = clf.get_best_params()
                         folds_params = {k: folds_params.get(k, []) + [v] for k, v in best_params.items()}
@@ -425,9 +427,9 @@ if __name__ == '__main__':
     user = 'ShaniE'
     password = 'opala'
     dj_info = {'host_path': host, 'user_name': user, 'password': password}
-    video_frame_rates = [2] #[2, 5, 10, 20, 50]
-    subject_lst = [464724] #[464724, 464725, 463189, 463190]
-    session_lists = [[1,2]] # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
+    video_frame_rates = [5] #[2, 5, 10, 20, 50]
+    subject_lst = [464724, 464725, 463189, 463190] #[464724, 464725, 463189, 463190]
+    session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]] # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
     all_sessions = {}
     for vid_fr in video_frame_rates:
         for i, subject in enumerate(subject_lst):
@@ -440,11 +442,11 @@ if __name__ == '__main__':
                     frame_rate=vid_fr,  # neural frame rate(Hz)
                     time_bin=(-10, 50),  # trial bin duration(sec)
                     missing_frames_lst=[7, 8, 9, 10],  # list of neural frames without corresponding video frames
-                    original_video_path='E:/Arseny_behavior_video',  # path to raw original video data - shared video folder located on Z drive
+                    original_video_path='D:/Arseny_behavior_video',  # path to raw original video data - shared video folder located on Z drive
                     model="LR",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
                     user_model_params=user_model_params,
                     # model hyperparameters, if not specify then the default will be set/ apply parameters search
-                    resample_method='combine undersample(random) and oversample(SMOTE)',
+                    resample_method='simple undersample',
                     # choose resample method to handle unbalanced data
                     dj_info=dj_info,  # data joint user credentials
                     save_folder_name=f"cropped- video frame rate {vid_fr} Hz",
@@ -453,6 +455,7 @@ if __name__ == '__main__':
                     handle_omission='convert',
                     # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
                     clean_ignore=True,  # throw out ignore trials (trials in which the mouse was not responsive)
+                    find_parameters=False   # enable hyperparameters search
                 )
 
                 decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)

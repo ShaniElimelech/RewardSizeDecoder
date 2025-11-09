@@ -21,7 +21,7 @@ def random_undersample_and_smote_oversample(X_train, y_train):
 
 def random_undersample(X_train, y_train):
     # Define resampling steps
-    under = RandomUnderSampler(sampling_strategy=0.42, random_state=42)  # Reduce majority class to ~70%
+    under = RandomUnderSampler(sampling_strategy=1.0, random_state=42)  # Reduce majority class to ~70%
     X_res, y_res = under.fit_resample(X_train, y_train)
     return X_res, y_res
 
