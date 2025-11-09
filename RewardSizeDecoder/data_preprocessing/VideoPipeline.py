@@ -295,7 +295,6 @@ class Video:
         self.loaded = True
 
 
-
 class VideoPair:
     def __init__(self, subject_id, session, video0: Video, video1: Video = None):
         """
@@ -357,8 +356,8 @@ class VideoPair:
 
 
         U, S, VT = np.linalg.svd(normalized, full_matrices=False)
-        #explained_var = (S ** 2) / np.sum(S ** 2)
-        #num_components = np.argmax(np.cumsum(explained_var) >= 0.9) + 1
+        explained_var = (S ** 2) / np.sum(S ** 2)
+        num_components = np.argmax(np.cumsum(explained_var) >= 0.9) + 1
 
         '''
         n_segments = int(frame_rate //2)
@@ -380,13 +379,13 @@ class VideoPair:
             with open(os.path.join(save_dir, f'OG_shape_{int(self.two_cams) + 1}cameras.pkl'), 'wb') as f:
                 pickle.dump(self.shapes, f)
 
-            #np.save(os.path.join(save_dir, f'num_components_0.9_{int(self.two_cams) + 1}cameras'), num_components)
-            #np.save(os.path.join(save_dir, f'v_singular_values_{int(self.two_cams) + 1}cameras'), S[:500])
+            np.save(os.path.join(save_dir, f'num_components_0.9_{int(self.two_cams) + 1}cameras'), num_components)
+            np.save(os.path.join(save_dir, f'v_singular_values_{int(self.two_cams) + 1}cameras'), S[:500])
             np.save(os.path.join(save_dir, f'v_spatial_dynamics_{int(self.two_cams) + 1}cameras'), VT[:500])
             np.save(os.path.join(save_dir, f'v_temporal_dynamics_{int(self.two_cams) + 1}cameras'), U[:, :500])
 
             self.plot_principal_components(VT, save_dir)
-            #self.plot_variance(explained_var, save_dir)
+            self.plot_variance(explained_var, save_dir)
 
         return U
 
