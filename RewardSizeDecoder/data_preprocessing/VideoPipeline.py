@@ -111,8 +111,6 @@ class Video:
             raise ValueError(f'There is no neural data for subject{subject_id} session{session}')
 
         for index, row in trials_data.iterrows():
-            if index == 16:
-                break
             video_file_trial_num = row["tracking_datafile_num"]
             video_file_name = f"video_cam_{self.camera_num}_v{video_file_trial_num:03d}.avi"
             trial_video_file_path = os.path.join(all_videos_path, f'{self.subject_id}', session_string, video_file_name)
@@ -120,7 +118,7 @@ class Video:
             frames = np.array(trial_frame_list)
             all_video_session.append(frames)
 
-        short_vdata = np.array(all_video_session)
+        short_vdata = np.concatenate(all_video_session, axis=0)
         self.video_array = short_vdata
         self.loaded = True
 
@@ -185,7 +183,7 @@ class Video:
         Automatically crops frames if dimensions are odd.
         """
         video = self.video_array
-        T, H, W = video
+        T, H, W = video.shape
 
         # Ensure dimensions are even (auto-crop if needed)
         residual_H = H % factor
@@ -209,7 +207,7 @@ class Video:
         crop the top (two photon imaging) and left side (lick port) of the image
         """
         f, H, W = self.video_array.shape
-        if new_H or new_W is None:
+        if new_H is None or new_W is None:
             y0, x0 = int(H // 10), int(W // 10)
         else:
             y0, x0 = H - new_H, W - new_W
@@ -224,8 +222,12 @@ class Video:
         top_pad = (new_H - H) // 2
         bottom_pad = new_H - H - top_pad
 
-        pads = ((bottom_pad, top_pad), (left_pad, right_pad))  # (top,bottom), (left,right)
-        self.video_array.shape = np.pad(self.video_array.shape, pads, mode='edge')
+        pads= (
+            (0, 0),  # no padding on frame dimension
+            (top_pad, bottom_pad),  # height padding
+            (left_pad, right_pad)  # width padding
+        )
+        self.video_array = np.pad(self.video_array, pads, mode='edge')
 
     def custom_temporal_downsampling(self, frame_rate, save_root=None):
         """

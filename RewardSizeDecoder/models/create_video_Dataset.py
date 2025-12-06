@@ -37,7 +37,7 @@ def split_data(video, start_trials):
     def trials_to_frames(mask):
         selected = np.where(mask)[0]
         # build ranges from start_trials[i]..ends[i]
-        return np.concatenate([np.arange(start_trials[i], ends[i]) for i in selected])
+        return np.concatenate([np.arange(int(start_trials[i]), int(ends[i])) for i in selected])
 
     train_idx = trials_to_frames(is_train)
     val_idx = trials_to_frames(is_val)
@@ -54,7 +54,7 @@ class VideoFramesDataset(Dataset):
         indices: list/np.array of indices that belong to this split (train/val/test)
         """
         self.x = frames_np
-        self.idx = indices
+        self.idx = indices.astype(int)
         self.transform = transform
 
     def __len__(self):
@@ -65,7 +65,7 @@ class VideoFramesDataset(Dataset):
         # numpy -> torch
         x = torch.from_numpy(x)
         # dtype/scale
-        if x.dtype == torch.uint8:
+        if x.dtype != torch.float32 and x.dtype != torch.float64:
             x = x.float().div_(255.0)
         if self.transform:
             x = self.transform(x)

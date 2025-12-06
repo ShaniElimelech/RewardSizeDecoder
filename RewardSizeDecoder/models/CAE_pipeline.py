@@ -9,7 +9,8 @@ from torchvision import transforms
 from create_video_Dataset import split_data, VideoFramesDataset
 import matplotlib.pyplot as plt
 import datajoint as dj
-from ..data_preprocessing.VideoPipeline import Video
+from data_preprocessing.VideoPipeline import Video
+import multiprocessing
 
 
 # -------------------- MODEL BUILDER -------------------------
@@ -29,30 +30,11 @@ class ModelBuilder:
     def build(self, cfg:dict):
         use_cuda = torch.cuda.is_available()
         device = torch.device('cuda' if use_cuda else 'cpu')
-        enc = FlexibleEncoder(
-            in_chan=self.in_chan,
-            num_latent=self.latent_num,
-            H_input=self.H,
-            W_input=self.W,
-            channels=cfg["channels"],
-            kernel_size=cfg["kernel"],
-            stride=cfg["stride"],
-            padding=cfg["padding"],
-            use_maxpool=(cfg["stride"] == 1)
-        ).to(device)
+        enc = FlexibleEncoder(cfg).to(device)
+        enc.build_model()
 
-        dec = FlexibleDecoder(
-            out_chan=self.out_chan,
-            num_latent=self.latent_num,
-            channels=cfg["channels"],
-            kernel_size=cfg["kernel"],
-            stride=cfg["stride"],
-            padding=cfg["padding"],
-            use_maxpool=(cfg["stride"] == 1)
-        ).to(device)
-
-        # Build deconv shape
-        dec.build_from_encoder(enc)
+        dec = FlexibleDecoder(cfg).to(device)
+        dec.build_model()
 
         return enc, dec
 
@@ -60,55 +42,61 @@ class ModelBuilder:
 # ----------------- ARCHITECTURE GENERATOR -------------------
 class ArchitectureGenerator:
     def __init__(
-            self, in_size=128,
+            self,
+            input_size=(2, 128, 128),
+            num_latents=16,
             kernel_lst=(3, 4, 5, 6, 7, 8),
             stride_lst=(1, 2, 3, 4),
-            padding_lst=(2, 3, 4, 5, 6, 7, 8),
-            channels_lst=(16, 32, 64, 128, 256, 512)
+            channels_lst=(64, 256, 32, 128, 512, 16, 1024)   #  (16, 32, 64, 128, 256, 512, 1024)
     ):
-        self.in_size = in_size
+        self.input_size = input_size
+        self.num_latents = num_latents
         self.kernel_lst = kernel_lst
         self.stride_lst = stride_lst
-        self.padding_lst = padding_lst
         self.channels_lst = channels_lst
 
     def generate(self):
+        """
+        Generates multiple autoencoder architectures with a fixed number of latents.
+        """
+
         archs = []
         for kernel in self.kernel_lst:
             for stride in self.stride_lst:
-                for pad in self.padding_lst:
-                    H = W = self.in_size
-                    channels = []
-                    layers = 0
+                input_dim = self.input_size[1]
+                out_dim_lst = [input_dim]
+                channels = []
+                layers = 0
+                ch_curr = 0
+                pad_lst = []
+                while input_dim > 6 and ch_curr < len(self.channels_lst):
+                    output_dim = (input_dim + stride - 1) // stride
+                    total_padding_needed = max(0, (output_dim - 1) * stride + kernel - input_dim)
+                    left_pad = total_padding_needed // 2
+                    right_pad = total_padding_needed - left_pad
 
-                    while True:
-                        H_new = math.floor((H + pad - kernel)/stride) + 1
-                        W_new = math.floor((W + pad - kernel)/stride) + 1
+                    if stride == 1:  # maxpool
+                        output_dim //= 2
 
-                        if stride == 1:  # maxpool simulation
-                            H_new //= 2
-                            W_new //= 2
+                    out_dim_lst.append(output_dim)
+                    pad_lst.append((left_pad, right_pad))
+                    channels.append(self.channels_lst[ch_curr])
+                    input_dim = output_dim
+                    ch_curr +=1
+                    layers += 1
 
-                        if H_new <= 0 or W_new <= 0:
-                            break
-                        if min(H_new, W_new) <= 6:  # (6,6) is the minimum features final map
-                            break
-
-                        ch = random.choice(self.channels_lst)
-                        channels.append(ch)
-                        H, W = H_new, W_new
-                        layers += 1
-
-                    if layers == 0:
-                        continue
-
-                    archs.append(dict(
-                        kernel=kernel,
-                        stride=stride,
-                        padding=pad,
-                        channels=sorted(channels),
-                        latent_dim=16
-                    ))
+                if layers == 0:     # not a valid architecture
+                    continue
+                # todo - maybe replace it with a generator that yields each time only one architecture to save memory
+                archs.append(dict(
+                    input_dim=self.input_size,  # original frame size (channels, H, W)
+                    num_latent=self.num_latents,
+                    kernel=kernel,              # fixed kernel size for all layers - might be variational in future version
+                    stride=stride,              # fixed stride size for all layers - might be variational in future version
+                    padding=pad_lst,            # list of tuples - padding for every layer (supports asymmetric padding)
+                    channels=sorted(channels),  # output channels for every layer
+                    output_dim=out_dim_lst,     # frame size after each conv layer
+                ))
         return archs
 
 
@@ -123,7 +111,6 @@ class Trainer:
         self.patience = patience
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.use_cuda = torch.cuda.is_available()
-        self.use_amp = True
         self.encoder = None
         self.decoder = None
         # storage for plotting
@@ -137,12 +124,13 @@ class Trainer:
             list(encoder.parameters()) + list(decoder.parameters()),
             lr=self.lr, weight_decay=self.weight_decay
         )
-        scaler = torch.amp.GradScaler(enabled=self.use_amp)
+        scaler = torch.cuda.amp.GradScaler(enabled=self.use_cuda)
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.max_epochs
         )
 
-        best_val = float("inf")
+        best_val_loss = float("inf")
+        best_epoch = 0
         best_weights = None
 
         for epoch in range(self.max_epochs):
@@ -161,6 +149,8 @@ class Trainer:
                 with torch.autocast(device_type=self.device, enabled=self.use_cuda):
                     latents = encoder(train_batch)
                     reconstructed = decoder(latents)
+                    if train_batch.size() != reconstructed.size():
+                        raise ValueError(f'target latents size does not match reconstructed latents size\nparams: {encoder.hparams}')
                     loss = loss_fn(reconstructed, train_batch)
                 if self.use_cuda:
                     scaler.scale(loss).backward()
@@ -193,21 +183,23 @@ class Trainer:
                 self.epoch_val_loss_values.append(val_epoch_loss)
 
                 # check improvement
-                if val_epoch_loss < best_val:
-                    best_val = val_epoch_loss
-                    best_loss_epoch = epoch + 1
+                if val_epoch_loss < best_val_loss:
+                    best_val_loss = val_epoch_loss
+                    best_epoch = epoch + 1
                     best_weights = {
                         "encoder": copy.deepcopy(encoder.state_dict()),
                         "decoder": copy.deepcopy(decoder.state_dict()),
                     }
+
+                    # todo: add save path off the model to torch.save()
 
                     if save_checkpoint:
                         # save checkpoint of best model so far
                         torch.save({
                             "encoder": encoder.state_dict(),
                             "decoder": decoder.state_dict(),
-                            "epoch": best_loss_epoch,
-                            "val_loss": best_val,
+                            "epoch": best_epoch,
+                            "val_loss": best_val_loss,
                         }, "best_model.pth")
 
                 # ===== Early stopping =====
@@ -227,7 +219,7 @@ class Trainer:
         self.encoder = encoder
         self.decoder = decoder
 
-        return best_val, best_epoch
+        return best_val_loss, best_epoch
 
     def test(self, test_loader, cfg=None, plot_examples=False, num_examples=50, save_dir="recon_plots"):
         loss_fn = nn.MSELoss()
@@ -375,7 +367,7 @@ class ArchitectureSearcher:
         results = []
         for cfg in self.architectures:
             enc, dec = self.builder.build(cfg)
-            val_loss = self.trainer.train(enc, dec, early_stop=False)
+            val_loss, _ = self.trainer.train(enc, dec, early_stop=False)
             results.append((val_loss, cfg))
         results.sort(key=lambda x:x[0])
         return results[:self.top_k]
@@ -431,114 +423,119 @@ def fetch_video_start_trials(subject_id, session, frame_rate, dj_modules, clean_
 
 
 
-# take only 16 trials for a test
+
+if __name__ == "__main__":
+    subject_id = 464724
+    session = 1
+    latent_num = 16
+    save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
+    frame_rate = 125
+    host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
+    user = 'ShaniE'
+    password = 'opala'
+    dj_info = {'host_path': host, 'user_name': user, 'password': password}
+    dj.config['database.host'] = dj_info['host_path']
+    dj.config['database.user'] = dj_info['user_name']
+    dj.config['database.password'] = dj_info['password']
+    conn = dj.conn()
+    tracking = dj.VirtualModule('TRACKING', 'arseny_learning_tracking')
+    exp2 = dj.VirtualModule('EXP2', 'arseny_s1alm_experiment2')
+    video_neural = dj.VirtualModule('VIDEONEURAL', "lab_videoNeuralAlignment")
+    dj_modules = {'tracking': tracking, 'exp2': exp2, 'video_neural': video_neural}
+
+    # retrieve videos
+    video0 = Video(subject_id, session, camera_num=0, video_path=None)
+    video1 = Video(subject_id, session, camera_num=1, video_path=None)
+    original_video_path = 'D:/Arseny_behavior_video'
+    video0.create_full_video_array(dj_modules, original_video_path, clean_ignore=True, clean_omission=False)
+    video1.create_full_video_array(dj_modules, original_video_path, clean_ignore=True, clean_omission=False)
+
+    # temporal downsample
+    video0.custom_temporal_downsampling(frame_rate, save_root=None)
+    video1.custom_temporal_downsampling(frame_rate, save_root=None)
+
+    # resize and crop video 0 to get shape (N,128,128)
+    video0.downsample_by_block_average(factor=2)
+    video0.crop_frames(new_H=128, new_W=128)
+
+    # resize and pas video 1 to get shape (N,128,128)
+    video1.downsample_by_block_average(factor=2)
+    video1.pad_frames(new_H=128, new_W=128)
+
+    # verify shapes match
+    assert video0.video_array.shape == video1.video_array.shape,  \
+        f"mismatch: {video0.video_array.shape} vs {video1.video_array.shape}"
+
+    # concat two cameras to get video with shape (N ,C=2, W=128, H=128)
+    full_video = np.stack([video0.video_array, video1.video_array], axis=1)
+
+    start_trials = fetch_video_start_trials(subject_id, session, frame_rate, dj_modules)
+    # split video to data loaders
+    train_idx, val_idx, test_idx = split_data(full_video, start_trials)
+    transform = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])  # scale [0,1] -> [-1,1]
+    train_ds = VideoFramesDataset(full_video, train_idx, transform)
+    val_ds = VideoFramesDataset(full_video, val_idx, transform)
+    test_ds = VideoFramesDataset(full_video, test_idx, transform)
+    import logging
+    multiprocessing.log_to_stderr().setLevel(logging.CRITICAL)
 
 
-subject_id = 464724
-session = 1
-save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/subject {subject_id}/session{session}'
-frame_rate = 150
-host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
-user = 'ShaniE'
-password = 'opala'
-dj_info = {'host_path': host, 'user_name': user, 'password': password}
-dj.config['database.host'] = dj_info['host_path']
-dj.config['database.user'] = dj_info['user_name']
-dj.config['database.password'] = dj_info['password']
-conn = dj.conn()
-tracking = dj.VirtualModule('TRACKING', 'arseny_learning_tracking')
-exp2 = dj.VirtualModule('EXP2', 'arseny_s1alm_experiment2')
-video_neural = dj.VirtualModule('VIDEONEURAL', "lab_videoNeuralAlignment")
-dj_modules = {'tracking': tracking, 'exp2': exp2, 'video_neural': video_neural}
-
-# retrieve videos
-video0 = Video(subject_id, session, camera_num=0, video_path=None)
-video1 = Video(subject_id, session, camera_num=1, video_path=None)
-original_video_path = 'D:/Arseny_behavior_video'
-video0.create_full_video_array(dj_modules, original_video_path, clean_ignore=False, clean_omission=False)
-video1.create_full_video_array(dj_modules, original_video_path, clean_ignore=False, clean_omission=False)
-
-# temporal downsample
-video0.custom_temporal_downsampling(frame_rate, save_root=None)
-video1.custom_temporal_downsampling(frame_rate, save_root=None)
-
-# resize and crop video 0 to get shape (N,128,128)
-video0.downsample_by_block_average(factor=2)
-video0.crop_frames(new_H=128, new_W=128)
-
-# resize and pas video 1 to get shape (N,128,128)
-video1.downsample_by_block_average(factor=2)
-video1.pad_frames(new_H=128, new_W=128)
-
-# verify shapes match
-assert video0.video_array.shape == video1.video_array.shape,  \
-    f"mismatch: {video0.video_array.shape} vs {video1.video_array.shape}"
-
-# concat two cameras to get video with shape (N ,C=2, W=128, H=128)
-full_video = np.stack([video0.video_array, video1.video_array], axis=1)
-
-start_trials = fetch_video_start_trials(subject_id, session, frame_rate, dj_modules)
-# split video to data loaders
-train_idx, val_idx, test_idx = split_data(full_video, start_trials[:16])
-transform = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])  # scale [0,1] → [-1,1]
-train_ds = VideoFramesDataset(full_video, train_idx, transform)
-val_ds = VideoFramesDataset(full_video, val_idx, transform)
-test_ds = VideoFramesDataset(full_video, test_idx, transform)
-
-train_loader = DataLoader(train_ds, batch_size=64, shuffle=True,
-                          num_workers=4, pin_memory=True, persistent_workers=True)
-val_loader = DataLoader(val_ds, batch_size=64, shuffle=False,
-                        num_workers=4, pin_memory=True, persistent_workers=True)
-test_loader = DataLoader(test_ds, batch_size=64, shuffle=False,
-                         num_workers=4, pin_memory=True, persistent_workers=True)
-
-
-# Generate architectures
-gen = ArchitectureGenerator(in_size=128)
-architectures = gen.generate()
-
-#Create model builder
-builder = ModelBuilder(in_chan=2, out_chan=2, latent_num=16, H=128, W=128)
-
-# Run fast search (20 epochs each)
-trainer = Trainer(train_loader, val_loader, max_epochs=20)
-searcher = ArchitectureSearcher(builder, trainer, architectures)
-top5 = searcher.run_fast_search()
-
-# Train top-5 fully with early stopping
-best_models = []
-for loss, cfg in top5:
-    enc, dec = builder.build(cfg)
-    best_val, best_epoch = Trainer(train_loader, val_loader, max_epochs=1000, patience=10).train(
-        enc, dec, early_stop=True
-    )
-
-    # Evaluate test performance
-    # plot reconstructed test frames vs original
-    save_recon_frames = os.path.join(save_dir, 'reconstruction_frames')
-    test_loss = trainer.test(test_loader, cfg, plot_examples=True, num_examples=50, save_dir=save_recon_frames)
-    best_models.append((test_loss, best_epoch, cfg, enc, dec))
-    # plot MSE loss for train, val and test during epochs
-    save_loss_plot = os.path.join(save_dir, 'training_loss_plots')
-    trainer.plot_losses(cfg, save_dir=save_loss_plot)
-
-
-# rank the final models
-best_models.sort(key=lambda x: x[0])
-best = best_models[:1]
-_, best_epoch, cfg, enc, dec = best
-
-# train again on train+val data on best model
-train_val_idx = train_idx + val_idx
-train_val_ds = VideoFramesDataset(full_video, train_val_idx, transform)
-train_val_loader = DataLoader(train_val_ds, batch_size=256, shuffle=True,
+    train_loader = DataLoader(train_ds, batch_size=64, shuffle=True,
                               num_workers=4, pin_memory=True, persistent_workers=True)
-best_val, best_epoch = Trainer(train_val_loader, None, max_epochs=best_epoch).train(
-    enc, dec, early_stop=False)
+    val_loader = DataLoader(val_ds, batch_size=64, shuffle=False,
+                            num_workers=4, pin_memory=True, persistent_workers=True)
+    test_loader = DataLoader(test_ds, batch_size=64, shuffle=False,
+                             num_workers=4, pin_memory=True, persistent_workers=True)
 
-# Encode latents for all video frames
-full_idx = train_idx + val_idx + test_idx
-full_v_ds = VideoFramesDataset(full_video, full_idx, transform)
-extractor = LatentExtractor(enc)
-all_video_latents = extractor.encode(full_v_ds)
 
+    # Generate architectures
+    gen = ArchitectureGenerator(input_size=full_video.shape[1:], num_latents=latent_num)
+    architectures = gen.generate()
+
+    #Create model builder
+    builder = ModelBuilder(in_chan=2, out_chan=2, latent_num=latent_num, H=128, W=128)
+
+    # Run fast search (20 epochs each)
+    trainer = Trainer(train_loader, val_loader, max_epochs=20)
+    searcher = ArchitectureSearcher(builder, trainer, architectures)
+    top5 = searcher.run_fast_search()
+
+    # Train top-5 fully with early stopping
+    best_models = []
+    for loss, cfg in top5:
+        enc, dec = builder.build(cfg)
+        trainer = Trainer(train_loader, val_loader, max_epochs=500, patience=10)
+        best_val, best_epoch = trainer.train(enc, dec, early_stop=True)
+
+        # Evaluate test performance
+        # plot reconstructed test frames vs original
+        save_recon_frames = os.path.join(save_dir, 'reconstruction_frames')
+        test_loss = trainer.test(test_loader, cfg, plot_examples=True, num_examples=50, save_dir=save_recon_frames)
+        best_models.append((test_loss, best_epoch, cfg, enc, dec))
+        # plot MSE loss for train, val and test during epochs
+        save_loss_plot = os.path.join(save_dir, 'training_loss_plots')
+        trainer.plot_losses(cfg, save_dir=save_loss_plot)
+
+
+    # rank the final models and proceed with the best performed model
+    best_models.sort(key=lambda x: x[0])
+    best = best_models[0]
+    _, best_epoch, cfg, enc, dec = best
+
+    # train again on train+val data on best model
+    train_val_idx = np.concatenate([train_idx, val_idx])
+    train_val_ds = VideoFramesDataset(full_video, train_val_idx, transform)
+    train_val_loader = DataLoader(train_val_ds, batch_size=256, shuffle=True,
+                                  num_workers=4, pin_memory=True, persistent_workers=True)
+    best_val, best_epoch = Trainer(train_val_loader, None, max_epochs=best_epoch).train(
+        enc, dec, early_stop=False)
+
+    # Encode latents for all video frames
+    full_idx = np.concatenate([train_idx, val_idx, test_idx])
+    full_v_ds = VideoFramesDataset(full_video, full_idx, transform)
+    extractor = LatentExtractor(enc)
+    all_video_latents = extractor.encode(full_v_ds)     # shape: [N_frames, D]
+    # save latents
+    np.save(os.path.join(save_dir, f'all_video_latents_dim={latent_num}.npy'), all_video_latents)
+
+# todo - add check memory of each model architecture, estimate_model_footprint
