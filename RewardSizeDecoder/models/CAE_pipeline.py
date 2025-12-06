@@ -539,3 +539,4 @@ if __name__ == "__main__":
     np.save(os.path.join(save_dir, f'all_video_latents_dim={latent_num}.npy'), all_video_latents)
 
 # todo - add check memory of each model architecture, estimate_model_footprint
+# test
