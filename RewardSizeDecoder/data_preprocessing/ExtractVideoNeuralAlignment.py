@@ -233,34 +233,34 @@ if __name__ == '__main__':
 
 
 
-    '''
-    savepath = 'H:\\Shared drives\\FinkelsteinLab\\People\\ShaniElimelech\\neuronal drift\\results\\new_downsampled_n_v_data'
-    for i, subject_id in enumerate(subject_lst):
-        sessions = session_lists[i]
-        for session in sessions:
-            print(f'subject:{subject_id}, session:{session} started')
-            save_session_path = os.path.join(savepath, f'{subject_id}', f'session{session}')
-            try:
-                for camera_num in [0, 1]:  # align data for each camera
-                    # generate for all trials aligned video and neural data and assemble it into a full session
-                    df_ndata = pd.DataFrame()
-                    all_video_session = []
-                    nanvalues = {}
+    #
+    # savepath = 'H:\\Shared drives\\FinkelsteinLab\\People\\ShaniElimelech\\neuronal drift\\results\\new_downsampled_n_v_data'
+    # for i, subject_id in enumerate(subject_lst):
+    #     sessions = session_lists[i]
+    #     for session in sessions:
+    #         print(f'subject:{subject_id}, session:{session} started')
+    #         save_session_path = os.path.join(savepath, f'{subject_id}', f'session{session}')
+    #         try:
+    #             for camera_num in [0, 1]:  # align data for each camera
+    #                 # generate for all trials aligned video and neural data and assemble it into a full session
+    #                 df_ndata = pd.DataFrame()
+    #                 all_video_session = []
+    #                 nanvalues = {}
+    #
+    #                 for trail_index, trial_data in get_session_trials_aligned_frames(subject_id, session,
+    #                                      camera_num, dj_modules, clean_ignore=False, clean_omission=False):
+    #                     df_ndata = pd.concat([df_ndata,trial_data['trial_neural_frames']], ignore_index=True, axis=1)
+    #                     trial_video_frames = [np.array(frames).mean(axis=0) for frames in trial_data['trial_video_frames_groups']]
+    #                     all_video_session.extend(trial_video_frames)
+    #
+    #                 short_ndata = df_ndata.to_numpy()  # convert df to npy
+    #                 short_vdata = np.array(all_video_session)  # convert df to npy
+    #                 os.makedirs(save_session_path, exist_ok=True)
+    #                 save_as_video(short_vdata.astype(np.uint8),savepath=f'{save_session_path}\downsampled_video_cam{camera_num}.avi')
+    #                 np.save(f'{save_session_path}\short_ndata.npy', short_ndata)
+    #
+    #         except (ValueError, RuntimeError, Exception) as e:
+    #                 print(f"Handled error: {e}\nskipping subject{subject_id} session{session}")
+    #                 continue
 
-                    for trail_index, trial_data in get_session_trials_aligned_frames(subject_id, session,
-                                         camera_num, dj_modules, clean_ignore=False, clean_omission=False):
-                        df_ndata = pd.concat([df_ndata,trial_data['trial_neural_frames']], ignore_index=True, axis=1)
-                        trial_video_frames = [np.array(frames).mean(axis=0) for frames in trial_data['trial_video_frames_groups']]
-                        all_video_session.extend(trial_video_frames)
-
-                    short_ndata = df_ndata.to_numpy()  # convert df to npy
-                    short_vdata = np.array(all_video_session)  # convert df to npy
-                    os.makedirs(save_session_path, exist_ok=True)
-                    save_as_video(short_vdata.astype(np.uint8),savepath=f'{save_session_path}\downsampled_video_cam{camera_num}.avi')
-                    np.save(f'{save_session_path}\short_ndata.npy', short_ndata)
-
-            except (ValueError, RuntimeError, Exception) as e:
-                    print(f"Handled error: {e}\nskipping subject{subject_id} session{session}")
-                    continue
-            '''
 

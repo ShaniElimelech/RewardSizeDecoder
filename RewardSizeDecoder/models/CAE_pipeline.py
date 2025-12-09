@@ -9,7 +9,7 @@ from torchvision import transforms
 from create_video_Dataset import split_data, VideoFramesDataset
 import matplotlib.pyplot as plt
 import datajoint as dj
-from data_preprocessing.VideoPipeline import Video
+from RewardSizeDecoder.data_preprocessing.VideoPipeline import Video
 import multiprocessing
 
 
@@ -30,6 +30,7 @@ class ModelBuilder:
     def build(self, cfg:dict):
         use_cuda = torch.cuda.is_available()
         device = torch.device('cuda' if use_cuda else 'cpu')
+        print('Using device:', device)
         enc = FlexibleEncoder(cfg).to(device)
         enc.build_model()
 
@@ -119,12 +120,16 @@ class Trainer:
         self.test_loss_value = None
 
     def train(self, encoder, decoder, early_stop=False, save_checkpoint=False):
+        # Move encoder & decoder to device BEFORE creating optimizer
+        encoder = encoder.to(self.device)
+        decoder = decoder.to(self.device)
+
         loss_fn = nn.MSELoss()
         optimizer = torch.optim.Adam(
             list(encoder.parameters()) + list(decoder.parameters()),
             lr=self.lr, weight_decay=self.weight_decay
         )
-        scaler = torch.cuda.amp.GradScaler(enabled=self.use_cuda)
+        scaler = torch.amp.GradScaler(enabled=self.use_cuda)
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.max_epochs
         )
@@ -144,14 +149,16 @@ class Trainer:
 
             for train_batch in loader:
                 batch_num += 1
-                train_batch = train_batch.to(self.device, non_blocking=True)
+                train_batch = train_batch.to(self.device, non_blocking=True).float()
                 optimizer.zero_grad()
                 with torch.autocast(device_type=self.device, enabled=self.use_cuda):
+
                     latents = encoder(train_batch)
                     reconstructed = decoder(latents)
                     if train_batch.size() != reconstructed.size():
                         raise ValueError(f'target latents size does not match reconstructed latents size\nparams: {encoder.hparams}')
                     loss = loss_fn(reconstructed, train_batch)
+
                 if self.use_cuda:
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
@@ -428,8 +435,10 @@ if __name__ == "__main__":
     subject_id = 464724
     session = 1
     latent_num = 16
-    save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
-    frame_rate = 125
+    #save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
+    save_dir = f'D:/shani/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
+    os.makedirs(save_dir, exist_ok=True)
+    frame_rate = 50
     host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
     user = 'ShaniE'
     password = 'opala'
@@ -481,11 +490,11 @@ if __name__ == "__main__":
 
 
     train_loader = DataLoader(train_ds, batch_size=64, shuffle=True,
-                              num_workers=4, pin_memory=True, persistent_workers=True)
+                              num_workers=1, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_ds, batch_size=64, shuffle=False,
-                            num_workers=4, pin_memory=True, persistent_workers=True)
+                            num_workers=1, pin_memory=True, persistent_workers=True)
     test_loader = DataLoader(test_ds, batch_size=64, shuffle=False,
-                             num_workers=4, pin_memory=True, persistent_workers=True)
+                             num_workers=1, pin_memory=True, persistent_workers=True)
 
 
     # Generate architectures
@@ -526,7 +535,7 @@ if __name__ == "__main__":
     train_val_idx = np.concatenate([train_idx, val_idx])
     train_val_ds = VideoFramesDataset(full_video, train_val_idx, transform)
     train_val_loader = DataLoader(train_val_ds, batch_size=256, shuffle=True,
-                                  num_workers=4, pin_memory=True, persistent_workers=True)
+                                  num_workers=1, pin_memory=True, persistent_workers=False)
     best_val, best_epoch = Trainer(train_val_loader, None, max_epochs=best_epoch).train(
         enc, dec, early_stop=False)
 
@@ -537,6 +546,10 @@ if __name__ == "__main__":
     all_video_latents = extractor.encode(full_v_ds)     # shape: [N_frames, D]
     # save latents
     np.save(os.path.join(save_dir, f'all_video_latents_dim={latent_num}.npy'), all_video_latents)
+    print('-' * 10)
+    print('pipeline has finished successfully')
+    print('-' * 10)
+
 
 # todo - add check memory of each model architecture, estimate_model_footprint
 # test

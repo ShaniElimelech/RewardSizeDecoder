@@ -244,15 +244,21 @@ class Video:
         frames = self.video_array
         i = 0
         jump = int(250 // frame_rate)
+        new_num_frames = frames.shape[0] // jump + 1
+        short_vdata = np.zeros((new_num_frames, frames.shape[1], frames.shape[2]))
+        curr_frame = 0
         while i < len(frames):
             if i+jump < len(frames):
                 ave_frame = np.rint(frames[i:i + jump].mean(axis=0)).astype(int)
+
             else:
                 ave_frame = np.rint(frames[i:].mean(axis=0)).astype(int)
-            downsample_video.append(ave_frame)
+            #downsample_video.append(ave_frame)
+            short_vdata[curr_frame, :, :] = ave_frame
             i = i + jump
+            curr_frame += 1
 
-        short_vdata = np.array(downsample_video)
+        #short_vdata = np.array(downsample_video)
 
         if save_root:
             os.makedirs(save_dir, exist_ok=True)

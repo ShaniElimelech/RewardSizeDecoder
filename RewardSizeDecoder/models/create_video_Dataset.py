@@ -63,10 +63,10 @@ class VideoFramesDataset(Dataset):
     def __getitem__(self, i):
         x = self.x[self.idx[i]]  # numpy slice
         # numpy -> torch
-        x = torch.from_numpy(x)
+        x = torch.from_numpy(x).float()
         # dtype/scale
-        if x.dtype != torch.float32 and x.dtype != torch.float64:
-            x = x.float().div_(255.0)
+        #if x.dtype != torch.float32 and x.dtype != torch.float64:
+        x = x.float().div_(255.0)
         if self.transform:
             x = self.transform(x)
         return x
