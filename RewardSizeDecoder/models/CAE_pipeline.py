@@ -436,7 +436,7 @@ if __name__ == "__main__":
     session = 1
     latent_num = 16
     #save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
-    save_dir = f'D:/shani/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
+    save_dir = f'D:/shani/RewardSizeDecoder/results/AE/sigmoid scale/latent_num={latent_num}/subject {subject_id}/session{session}'
     os.makedirs(save_dir, exist_ok=True)
     frame_rate = 50
     host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
@@ -467,7 +467,7 @@ if __name__ == "__main__":
     video0.downsample_by_block_average(factor=2)
     video0.crop_frames(new_H=128, new_W=128)
 
-    # resize and pas video 1 to get shape (N,128,128)
+    # resize and pad video 1 to get shape (N,128,128)
     video1.downsample_by_block_average(factor=2)
     video1.pad_frames(new_H=128, new_W=128)
 
@@ -481,7 +481,9 @@ if __name__ == "__main__":
     start_trials = fetch_video_start_trials(subject_id, session, frame_rate, dj_modules)
     # split video to data loaders
     train_idx, val_idx, test_idx = split_data(full_video, start_trials)
-    transform = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])  # scale [0,1] -> [-1,1]
+    # scale [0,1] -> [-1,1]
+    #transform = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])
+    transform = None
     train_ds = VideoFramesDataset(full_video, train_idx, transform)
     val_ds = VideoFramesDataset(full_video, val_idx, transform)
     test_ds = VideoFramesDataset(full_video, test_idx, transform)
@@ -552,4 +554,7 @@ if __name__ == "__main__":
 
 
 # todo - add check memory of each model architecture, estimate_model_footprint
-# test
+
+# todo - check if different scaling influence the prediction
+# todo - change relu to leaky relu
+# todo - try to run unpool max layer

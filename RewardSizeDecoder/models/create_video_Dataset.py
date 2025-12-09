@@ -65,7 +65,6 @@ class VideoFramesDataset(Dataset):
         # numpy -> torch
         x = torch.from_numpy(x).float()
         # dtype/scale
-        #if x.dtype != torch.float32 and x.dtype != torch.float64:
         x = x.float().div_(255.0)
         if self.transform:
             x = self.transform(x)

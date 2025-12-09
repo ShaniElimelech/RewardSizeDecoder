@@ -216,7 +216,8 @@ class FlexibleDecoder(nn.Module):
                 self.decoder.add_module(f'ReLu - layer {i_layer + 1}', module)  # in case of slow convergence or many dead filters -> switch to Leaky ReLU (alpha = 0.01)
             # last layer has tanh module to get values in [-1,1]
             else:
-                module = nn.Tanh()
+                #module = nn.Tanh()
+                module = nn.Sigmoid()
                 self.decoder.add_module(f'Tanh - layer {i_layer + 1}', module)
 
 
