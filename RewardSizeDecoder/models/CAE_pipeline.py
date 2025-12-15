@@ -9,7 +9,7 @@ from torchvision import transforms
 from create_video_Dataset import split_data, VideoFramesDataset
 import matplotlib.pyplot as plt
 import datajoint as dj
-from RewardSizeDecoder.data_preprocessing.VideoPipeline import Video
+from data_preprocessing.VideoPipeline import Video
 import multiprocessing
 
 
@@ -435,8 +435,9 @@ if __name__ == "__main__":
     subject_id = 464724
     session = 1
     latent_num = 16
-    #save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/AE/latent_num={latent_num}/subject {subject_id}/session{session}'
-    save_dir = f'D:/shani/RewardSizeDecoder/results/AE/sigmoid scale/latent_num={latent_num}/subject {subject_id}/session{session}'
+    save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/AE/sigmoid scale/latent_num={latent_num}/subject {subject_id}/session{session}'
+    video_save_dir = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/downsampled_video'
+    # save_dir = f'D:/shani/RewardSizeDecoder/results/AE/sigmoid scale/latent_num={latent_num}/subject {subject_id}/session{session}'
     os.makedirs(save_dir, exist_ok=True)
     frame_rate = 50
     host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
@@ -453,23 +454,13 @@ if __name__ == "__main__":
     dj_modules = {'tracking': tracking, 'exp2': exp2, 'video_neural': video_neural}
 
     # retrieve videos
-    video0 = Video(subject_id, session, camera_num=0, video_path=None)
-    video1 = Video(subject_id, session, camera_num=1, video_path=None)
+    video0 = Video(subject_id, session, camera_num=0, batch_load=True,video_path=None)
+    video1 = Video(subject_id, session, camera_num=1, batch_load=True, video_path=None)
     original_video_path = 'D:/Arseny_behavior_video'
-    video0.create_full_video_array(dj_modules, original_video_path, clean_ignore=True, clean_omission=False)
-    video1.create_full_video_array(dj_modules, original_video_path, clean_ignore=True, clean_omission=False)
 
-    # temporal downsample
-    video0.custom_temporal_downsampling(frame_rate, save_root=None)
-    video1.custom_temporal_downsampling(frame_rate, save_root=None)
-
-    # resize and crop video 0 to get shape (N,128,128)
-    video0.downsample_by_block_average(factor=2)
-    video0.crop_frames(new_H=128, new_W=128)
-
-    # resize and pad video 1 to get shape (N,128,128)
-    video1.downsample_by_block_average(factor=2)
-    video1.pad_frames(new_H=128, new_W=128)
+    # videos go through the full preprocessing pipeline
+    video0.full_video_pipline(original_video_path,frame_rate, video_save_dir, dj_modules)
+    video1.full_video_pipline(original_video_path, frame_rate, video_save_dir, dj_modules)
 
     # verify shapes match
     assert video0.video_array.shape == video1.video_array.shape,  \
@@ -477,10 +468,10 @@ if __name__ == "__main__":
 
     # concat two cameras to get video with shape (N ,C=2, W=128, H=128)
     full_video = np.stack([video0.video_array, video1.video_array], axis=1)
-
+    len_video = len(full_video)
     start_trials = fetch_video_start_trials(subject_id, session, frame_rate, dj_modules)
     # split video to data loaders
-    train_idx, val_idx, test_idx = split_data(full_video, start_trials)
+    train_idx, val_idx, test_idx = split_data(len_video, start_trials)
     # scale [0,1] -> [-1,1]
     #transform = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])
     transform = None
@@ -492,11 +483,11 @@ if __name__ == "__main__":
 
 
     train_loader = DataLoader(train_ds, batch_size=64, shuffle=True,
-                              num_workers=1, pin_memory=True, persistent_workers=True)
+                              num_workers=4, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_ds, batch_size=64, shuffle=False,
-                            num_workers=1, pin_memory=True, persistent_workers=True)
+                            num_workers=4, pin_memory=True, persistent_workers=True)
     test_loader = DataLoader(test_ds, batch_size=64, shuffle=False,
-                             num_workers=1, pin_memory=True, persistent_workers=True)
+                             num_workers=4, pin_memory=True, persistent_workers=True)
 
 
     # Generate architectures
@@ -537,7 +528,7 @@ if __name__ == "__main__":
     train_val_idx = np.concatenate([train_idx, val_idx])
     train_val_ds = VideoFramesDataset(full_video, train_val_idx, transform)
     train_val_loader = DataLoader(train_val_ds, batch_size=256, shuffle=True,
-                                  num_workers=1, pin_memory=True, persistent_workers=False)
+                                  num_workers=4, pin_memory=True, persistent_workers=False)
     best_val, best_epoch = Trainer(train_val_loader, None, max_epochs=best_epoch).train(
         enc, dec, early_stop=False)
 
@@ -555,6 +546,7 @@ if __name__ == "__main__":
 
 # todo - add check memory of each model architecture, estimate_model_footprint
 
+# todo - check different video frequencies
 # todo - check if different scaling influence the prediction
 # todo - change relu to leaky relu
 # todo - try to run unpool max layer

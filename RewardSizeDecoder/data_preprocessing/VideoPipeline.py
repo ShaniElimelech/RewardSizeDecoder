@@ -3,6 +3,7 @@ import os
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+from click.core import batch
 from scipy import stats as sc
 import pickle
 import datajoint as dj
@@ -13,13 +14,75 @@ from .block_svd import svd_in_blocks
 
 
 class Video:
-    def __init__(self, subject_id, session, camera_num, video_path=None):
+    def __init__(self, subject_id, session, camera_num, batch_load=True, video_path=None):
         self.subject_id = subject_id
         self.session = session
         self.camera_num = camera_num
         self.loaded = False
         self.video_array = None
+        self.batch_array = None
         self.video_path = video_path
+        self.batch_load = batch_load
+
+    def full_video_pipline(self, original_video_path,frame_rate, video_save_dir, dj_modules, clean_ignore=True, clean_omission=False):
+        if not video_save_dir:
+            raise ValueError('video_save_dir cannot be None')
+
+        folder_dir = os.path.join(video_save_dir, f'{self.subject_id}', f'session{self.session}')
+        video_dir = os.path.join(folder_dir, f'downsampled_video_cam{self.camera_num}.npy')
+        if os.path.exists(video_dir):
+            self.video_array = np.load(video_dir)
+
+        else:
+            if self.batch_load:
+                # preprocessing video in batches due to small memory
+                full_video_array = []
+                for batch_video in self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission):  # generator function - load batch - by trial video
+                    self.batch_array = batch_video
+
+                    # temporal downsample
+                    self.custom_temporal_downsampling(frame_rate)
+
+                    # resize image
+                    self.downsample_by_block_average(factor=2)
+
+                    if self.camera_num == 0:
+                        # crop video 0 to get shape (B,128,128)
+                        self.crop_frames(new_H=128, new_W=128)
+                    elif self.camera_num == 1:
+                        # pad video 1 to get shape (B,128,128)
+                        self.pad_frames(new_H=128, new_W=128)
+                    else:
+                        raise ValueError('camera_num must be 1 or 2')
+
+                    full_video_array.append(self.batch_array)
+
+                self.video_array = np.concatenate(full_video_array, axis=0)
+                self.loaded = True
+
+            # loading video in one shot
+            else:
+                # load videos
+                self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission)
+                self.video_array = np.concatenate(
+                    list(self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission)),axis=0)
+                self.loaded = True
+
+                # temporal downsample
+                self.custom_temporal_downsampling(frame_rate)
+
+                if self.camera_num == 0:
+                    # crop video 0 to get shape (B,128,128)
+                    self.crop_frames(new_H=128, new_W=128)
+                if self.camera_num == 1:
+                    # pad video 1 to get shape (B,128,128)
+                    self.pad_frames(new_H=128, new_W=128)
+                else:
+                    raise ValueError('camera_num must be 1 or 2')
+
+            # save processed videos
+            os.makedirs(folder_dir, exist_ok=True)
+            np.save(video_dir, self.video_array)
 
     def open_video(self):
         """
@@ -93,8 +156,8 @@ class Video:
     def create_full_video_array(self, dj_modules, original_video_path, clean_ignore=False, clean_omission=False):
         """
         retrieve from hard disk all video trials and join them into a full video session array
+        for batch loading process acts as a generator
         """
-        all_video_session = []
         video_neural = dj_modules['video_neural']
         tracking = dj_modules['tracking']
         exp2 = dj_modules['exp2']
@@ -116,11 +179,7 @@ class Video:
             trial_video_file_path = os.path.join(all_videos_path, f'{self.subject_id}', session_string, video_file_name)
             trial_frame_list = get_all_trial_video_frames(trial_video_file_path, video_file_trial_num, self.camera_num)
             frames = np.array(trial_frame_list)
-            all_video_session.append(frames)
-
-        short_vdata = np.concatenate(all_video_session, axis=0)
-        self.video_array = short_vdata
-        self.loaded = True
+            yield frames
 
     def align_with_neural_data(self, dj_modules, original_video_path, clean_ignore=False, clean_omission=False,
                                save_root=None, compute_neural_data=True):
@@ -182,7 +241,7 @@ class Video:
         Downsample a grayscale video (T, H, W) spatially by factor of 2 using block averaging.
         Automatically crops frames if dimensions are odd.
         """
-        video = self.video_array
+        video = self.batch_array if self.batch_load else self.video_array
         T, H, W = video.shape
 
         # Ensure dimensions are even (auto-crop if needed)
@@ -200,23 +259,31 @@ class Video:
         downsampled = video.reshape(T, H // factor, factor, W // factor, factor).mean(axis=(2, 4))
 
         # Preserve original dtype (e.g. uint8)
-        self.video_array = np.rint(downsampled).astype(self.video_array.dtype)
+        if self.batch_load:
+            self.batch_array = np.rint(downsampled).astype(self.batch_array.dtype)
+        else:
+            self.video_array = np.rint(downsampled).astype(self.video_array.dtype)
 
     def crop_frames(self, new_H=None, new_W=None):
         """
         crop the top (two photon imaging) and left side (lick port) of the image
         """
-        f, H, W = self.video_array.shape
+        f, H, W = self.batch_array.shape if self.batch_load else self.video_array.shape
         if new_H is None or new_W is None:
             y0, x0 = int(H // 10), int(W // 10)
         else:
             y0, x0 = H - new_H, W - new_W
 
-        crop_video = self.video_array[:, y0:, x0:]
-        self.video_array = crop_video
+        if self.batch_load:
+            crop_video = self.batch_array[:, y0:, x0:]
+            self.batch_array = crop_video
+
+        else:
+            crop_video = self.video_array[:, y0:, x0:]
+            self.video_array = crop_video
 
     def pad_frames(self, new_H=128, new_W=128):
-        f, H, W = self.video_array.shape
+        f, H, W = self.batch_array.shape if self.batch_load else self.video_array.shape
         right_pad = (new_W - W) // 2
         left_pad = new_W - W - right_pad
         top_pad = (new_H - H) // 2
@@ -227,7 +294,10 @@ class Video:
             (top_pad, bottom_pad),  # height padding
             (left_pad, right_pad)  # width padding
         )
-        self.video_array = np.pad(self.video_array, pads, mode='edge')
+        if self.batch_load:
+            self.batch_array = np.pad(self.batch_array, pads, mode='edge')
+        else:
+            self.video_array = np.pad(self.video_array, pads, mode='edge')
 
     def custom_temporal_downsampling(self, frame_rate, save_root=None):
         """
@@ -238,10 +308,14 @@ class Video:
             if os.path.exists(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy')):
                 self.video_array = np.load(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy'))
                 self.loaded = True
-                return
+                return self.video_array
 
-        downsample_video = []
-        frames = self.video_array
+
+        if self.batch_load:
+            frames = self.batch_array
+
+        else:
+            frames = self.video_array
         i = 0
         jump = int(250 // frame_rate)
         new_num_frames = frames.shape[0] // jump + 1
@@ -253,19 +327,24 @@ class Video:
 
             else:
                 ave_frame = np.rint(frames[i:].mean(axis=0)).astype(int)
-            #downsample_video.append(ave_frame)
+
             short_vdata[curr_frame, :, :] = ave_frame
             i = i + jump
             curr_frame += 1
-
-        #short_vdata = np.array(downsample_video)
 
         if save_root:
             os.makedirs(save_dir, exist_ok=True)
             np.save(os.path.join(save_dir, f'downsampled_video_cam{self.camera_num}.npy'), short_vdata)
 
-        self.video_array = short_vdata
-        self.loaded = True
+        if self.batch_load:
+            self.batch_array = short_vdata
+            return None
+
+        else:
+            self.video_array = short_vdata
+            self.loaded = True
+            return None
+
 
     def gaussian_smooth_and_resample(self, frame_rate, dj_modules, original_video_path, clean_ignore=False, clean_omission=False):
         """

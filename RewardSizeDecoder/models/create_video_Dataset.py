@@ -4,9 +4,9 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 
 
 # ---------------- Define split video to sets function -----------------
-def split_data(video, start_trials):
+def split_data(n_frames, start_trials):
     """
-    video: (N, C, H, W) size tensor, N-number of frames, C- channels(two cameras)
+    n_frames: N-number of total frames (total length of a session)
     start_trials: (T, 1) size tensor, T-number of trials. contains start indexes of each trial
     out ->
     train, validation, test video tensors
@@ -17,7 +17,6 @@ def split_data(video, start_trials):
 
     start_trials = np.asarray(start_trials)
     n_trials = len(start_trials)
-    n_frames = len(video)
 
     # Determine trials end indexes
     ends = np.append(start_trials[1:], [n_frames])
