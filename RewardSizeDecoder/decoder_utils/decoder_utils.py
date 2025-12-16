@@ -138,7 +138,6 @@ def save_parameters(self,
                     f.write(f"{k},{v}\n")
             saved["excel_fallback_csv"] = str(p)
 
-    return saved
 
 
 

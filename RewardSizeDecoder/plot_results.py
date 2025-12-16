@@ -92,13 +92,13 @@ def plot_score_over_time(yvals, time_array, title, savepath, ylabel="Score", tic
     plt.close(fig)
 
 
-def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session, model, frame_bin, frame_rate,
+def plot_all_scores_over_time(savedir, scores_dic, roc_dic, pr_auc_dic, subject_id, session, model, frame_bin, frame_rate,
                               error_type="sem", also_plot_per_fold=False):
     """
     error_type: "sem" (standard error of the mean)
     also_plot_per_fold: if True, plots each fold as a thin line (separate files, same directory)
     """
-    savedir = os.path.join(savedir, 'figures_50_50_ratio', f'Decoder {model} output', 'all_scores_over_time')
+    savedir = os.path.join(savedir, f'Decoder {model} output', 'all_scores_over_time')
     os.makedirs(savedir, exist_ok=True)
 
     # time axis
@@ -112,6 +112,10 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
     # align to scores_df index order
     scores_df['auc'] = auc_series.reindex(scores_df.index).values
 
+    # add scalar PR auc per time bin to scores_df
+    pr_auc_series = pd.Series(auc for auc in pr_auc_dic.values())
+    scores_df['pr_auc'] = pr_auc_series.reindex(scores_df.index).values
+
     # sanity check: same length
     assert len(scores_df) == len(time_array), "time_array and number of time bins must match."
 
@@ -121,7 +125,7 @@ def plot_all_scores_over_time(savedir, scores_dic, roc_dic, subject_id, session,
         title = f'{col} score over time,subject{subject_id},session{session}'
         savepath = os.path.join(savedir, title + '.png')
 
-        if col == 'auc':
+        if col in ['auc', 'pr_auc']:
             # scalar per time bin → simple line plot
             yvals = col_series.astype(float).values
             plot_score_over_time(yvals, time_array, title, savepath, ylabel=f"{col} score")
@@ -177,7 +181,7 @@ def plot_roc_curve(savedir, roc_dic, subject_id, session, model):
     plt.close()
 
 
-def plot_results(savedir, scores_dic, roc_dic, subject_id, session, model, frame_bin, frame_rate):
+def plot_results(savedir, scores_dic, roc_dic, pr_auc_dic, subject_id, session, model, frame_bin, frame_rate):
     """
     Generate all figures (scores over time + ROC curves) and save them under `savedir`.
 
@@ -186,9 +190,11 @@ def plot_results(savedir, scores_dic, roc_dic, subject_id, session, model, frame
     savedir : str
         Base directory to save figures.
     scores_dic : dict
-        Nested dict keyed by frame (or time bin) with scalar metrics per key (e.g., accuracy, precision, recall, etc.).
+        Nested dict keyed by frame (time bin) with scalar metrics per key (e.g., accuracy, precision, recall, etc.).
     roc_dic : dict
-        Nested dict keyed by frame (or time bin), each holding {'fpr': array, 'tpr': array, 'auc': float}.
+        Nested dict keyed by frame (time bin), each holding {'fpr': array, 'tpr': array, 'auc': float}.
+    pr_auc_dic : dict
+        dict keyed by frame (time bin) such that {frame: pr_auc}
     subject_id : str or int
     session : str or int
     model : str
@@ -202,6 +208,7 @@ def plot_results(savedir, scores_dic, roc_dic, subject_id, session, model, frame
         savedir=savedir,
         scores_dic=scores_dic,
         roc_dic=roc_dic,
+        pr_auc_dic=pr_auc_dic,
         subject_id=subject_id,
         session=session,
         model=model,

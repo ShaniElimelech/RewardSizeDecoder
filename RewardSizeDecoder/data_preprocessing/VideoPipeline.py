@@ -437,21 +437,22 @@ class VideoPair:
         explained_var = (S ** 2) / np.sum(S ** 2)
         num_components = np.argmax(np.cumsum(explained_var) >= 0.9) + 1
 
-        '''
-        n_segments = int(frame_rate //2)
-        # get U @ S from svd in blocks algorithm
-        U, VT = svd_in_blocks(
-            video_matrix,
-            n_segments,
-            P=video_matrix.shape[1],
-            k_seg=300,
-            k_global=500,
-            dtype=np.float32,
-        )
-        '''
+        # in case you need to perform svd in blocks: uncomment this block ;)
+
+        # n_segments = int(frame_rate //2)
+        # # get U @ S from svd in blocks algorithm
+        # U, VT = svd_in_blocks(
+        #     video_matrix,
+        #     n_segments,
+        #     P=video_matrix.shape[1],
+        #     k_seg=300,
+        #     k_global=500,
+        #     dtype=np.float32,
+        # )
+
 
         if save_root:
-            save_dir = os.path.join(save_root, 'video_svd', f'{self.subject_id}', f'session{self.session}')
+            save_dir = os.path.join(save_root, f'{self.subject_id}', f'session{self.session}', 'video_svd')
             os.makedirs(save_dir, exist_ok=True)
 
             with open(os.path.join(save_dir, f'OG_shape_{int(self.two_cams) + 1}cameras.pkl'), 'wb') as f:

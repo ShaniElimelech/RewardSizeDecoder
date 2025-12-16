@@ -1,6 +1,7 @@
 from sklearn.model_selection import StratifiedKFold, KFold
 from data_preprocessing.prepare_datasets import load_clean_align_data, get_t_slice_video
 from data_preprocessing.resample_data import random_undersample, no_resample, predict_ensemble_proba, predict_ensemble, random_undersample_and_smote_oversample
+from sklearn.metrics import average_precision_score
 from models.LinearDiscriminantAnalysis import LDA
 from models.LogisticRegression import LogisticRegressionModel
 from models.SupportVectorMechine import SVM
@@ -25,13 +26,13 @@ class RewardSizeDecoder:
                  num_features,
                  frame_rate,
                  time_bin,
-                 missing_frames_lst,
                  original_video_path,
                  model,
                  user_model_params,
                  resample_method,
                  dj_info,
                  save_folder_name,
+                 save_video_folder,
                  handle_omission,
                  clean_ignore,
                  find_parameters=True,
@@ -43,17 +44,18 @@ class RewardSizeDecoder:
         self.num_features = num_features
         self.frame_rate = frame_rate
         self.time_bin = time_bin
-        self.missing_frames_lst = missing_frames_lst
         self.original_video_path = original_video_path
         self.model = model
         self.user_model_params = user_model_params
         self.resample_method = resample_method
         self.dj_info = dj_info
         self.save_folder_name = save_folder_name
+        self.save_video_folder = save_video_folder
         self.handle_omission = handle_omission
         self.clean_ignore = clean_ignore
         self.find_parameters = find_parameters
         self.saveroot = None
+        self.saveroot_video = None
 
         # base logger (handlers & formatting)
         base_name = "RewardSizeDecoder"
@@ -96,16 +98,6 @@ class RewardSizeDecoder:
             elif not (start < end):
                 errors.append(f"time_bin must satisfy start < end; got {self.time_bin}.")
 
-        # missing_frames_lst
-        if self.missing_frames_lst is not None:
-            try:
-                mfl = list(self.missing_frames_lst)
-            except Exception:
-                errors.append("missing_frames_lst must be iterable (or None).")
-            else:
-                if not all(isinstance(x, numbers.Integral) for x in mfl):
-                    errors.append("missing_frames_lst must contain only integers.")
-
         # model / params
         if not isinstance(self.model, str) or not self.model.strip():
             errors.append("model must be a non-empty string.")
@@ -132,6 +124,11 @@ class RewardSizeDecoder:
         if not isinstance(self.save_folder_name, str) or not self.save_folder_name.strip():
             self.save_folder_name = "my_run"
         self.save_folder_name = _safe_folder_name(self.save_folder_name)
+
+        # sanitize video folder name (fallback to 'results' if blank/invalid)
+        if not isinstance(self.save_video_folder, str) or not self.save_video_folder.strip():
+            self.save_video_folder = "processed video"
+        self.save_video_folder = _safe_folder_name(self.save_video_folder)
 
         # dj_info must be a dict with required string-like keys
         dj_required = ("host_path", "user_name", "password")
@@ -182,11 +179,17 @@ class RewardSizeDecoder:
         safe_leaf = _safe_folder_name(self.save_folder_name)
         saveroot = base / results_folder_name / safe_leaf
 
+        # Build saveroot video path
+        safe_leaf_video = _safe_folder_name(self.save_video_folder)
+        saveroot_video = base / results_folder_name / safe_leaf_video
+
         # Create directories if requested
         if ensure_exists:
             saveroot.mkdir(parents=True, exist_ok=True)
+            saveroot_video.mkdir(parents=True, exist_ok=True)
 
         self.saveroot = str(saveroot)
+        self.saveroot_video = str(saveroot_video)
 
         if log_to_file:
             # attach file handler once we know where to write
@@ -196,10 +199,8 @@ class RewardSizeDecoder:
 
     def save_user_parameters(self, fmt=("json", "excel"), filename_stem="decoder_params"):
         """Save parameters as JSON and/or Excel"""
-        saves_dic = save_parameters(self, fmt, filename_stem)
-        print("Saved files:")
-        for kind, path in saves_dic.items():
-            print(f"  {kind}: {path}")
+        save_parameters(self, fmt, filename_stem)
+        print("Saved model parameters")
 
     # ---------- Reward Size Decoder----------
 
@@ -218,38 +219,51 @@ class RewardSizeDecoder:
         }
         t0 = time.perf_counter()
         self.log.debug('start load_clean_align_data')
+
         # preprocess data - load from dj, clean and align all data sets
+
         #start_trials, reward_labels, neural_indexes, video_features = (
             #load_clean_align_data(self.subject_id, self.session, self.num_features, self.frame_rate, self.time_bin, self.original_video_path, self.dj_info, self.saveroot, self.log, self.handle_omission, self.clean_ignore))
 
         start_trials, reward_labels, video_features = (
-            load_clean_align_data(self.subject_id, self.session, self.num_features, self.frame_rate, self.time_bin, self.original_video_path, self.dj_info, self.saveroot, self.log, self.handle_omission, self.clean_ignore))
+            load_clean_align_data(
+                self.subject_id,
+                self.session,
+                self.num_features,
+                self.frame_rate,
+                self.time_bin,
+                self.original_video_path,
+                self.dj_info,
+                self.saveroot,
+                self.saveroot_video,
+                self.log,
+                self.handle_omission,
+                self.clean_ignore
+            )
+        )
 
-        self.log.info('finish load_clean_align_data')
         import numpy as np
+        self.log.info('finish load_clean_align_data')
         fr = int(np.floor(self.frame_rate))
         frames_bin = list(range(self.time_bin[0] * fr, self.time_bin[1] * fr + 1))
+
+        # initialized empty outputs
         all_frames_scores = {}
         all_frames_roc = {}
+        all_frames_pr_auc = {}
         all_frames_confusion = {}
         all_frames_pc_separated = {}
         all_frames_best_params = {}
         bin_frames_dic = {}
         frames_plot = []
+
         self.log.debug('start model training on all frames')
         self.log.info('start model training on all frames')
         missing_vid_dic = {}
 
         for frame_idx, frame_time in enumerate(frames_bin):
-
-            #if self.missing_frames_lst is not None and len(self.missing_frames_lst) > 0:
-                #if frame_time in self.missing_frames_lst:  # frames without corresponding video
-                    #continue
-
             trials_len = len(reward_labels)  # number of all trials within session
-
             #data_video, data_reward = get_t_slice_video(start_trials, frame_idx, video_features, neural_indexes, reward_labels)
-            import numpy as np
             t_trials = (start_trials + frame_idx).astype(int)
             t_trials = np.array([t if 0 <= t < len(video_features) else float('nan') for t in t_trials])
             valid_mask =~np.isnan(t_trials)
@@ -278,50 +292,48 @@ class RewardSizeDecoder:
                 continue
             frames_plot.append(frame_time)
 
-            from imblearn.pipeline import make_pipeline
-            from imblearn.over_sampling import SMOTE
-            from imblearn.under_sampling import RandomUnderSampler
-            from sklearn.preprocessing import StandardScaler
-            from sklearn.linear_model import LogisticRegression
-            from sklearn.model_selection import LeaveOneOut, cross_validate
-            from sklearn.metrics import recall_score, confusion_matrix
-            import numpy as np
-
-            scoring = {
-            'accuracy': 'accuracy',
-            'recall': 'recall',
-            'auc': 'roc_auc',
-            'f1': 'f1'
-            }
-
-            pipe = make_pipeline(
-                StandardScaler(),
-                SMOTE(sampling_strategy=0.4, k_neighbors=1, random_state=42),
-                RandomUnderSampler(sampling_strategy=0.6, random_state=42),
-                LogisticRegression(class_weight={0: 35, 1: 65})
-            )
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-            scores = cross_validate(
-            pipe,
-            data_video,
-            data_reward,
-            cv=skf,
-            scoring=scoring,
-            return_train_score=False
-            )
-
-            accuracy = scores['test_accuracy']
-            recall = scores['test_recall']
-            auc = scores['test_auc']
-            f1 = scores['test_f1']
-
-            print('------------------------------------------------------------')
-            print(f'subject_id: {self.subject_id} | session: {self.session} | frame time: {frame_time}')
-            print(f'accuracy: {accuracy} | recall: {recall} | f1: {f1} | auc: {auc}')
-            print(f'missing video percentage: {missing_video_trials}')
-            print('------------------------------------------------------------')
-
-            ave_accuracy = round(np.mean(accuracy), 2)
+            # from imblearn.pipeline import make_pipeline
+            # from imblearn.over_sampling import SMOTE
+            # from imblearn.under_sampling import RandomUnderSampler
+            # from sklearn.preprocessing import StandardScaler
+            # from sklearn.linear_model import LogisticRegression
+            # from sklearn.model_selection import LeaveOneOut, cross_validate
+            # from sklearn.metrics import recall_score, confusion_matrix
+            # import numpy as np
+            #
+            # scoring = {
+            # 'accuracy': 'accuracy',
+            # 'recall': 'recall',
+            # 'auc': 'roc_auc',
+            # 'f1': 'f1'
+            # }
+            #
+            # pipe = make_pipeline(
+            #     StandardScaler(),
+            #     SMOTE(sampling_strategy=0.4, k_neighbors=1, random_state=42),
+            #     RandomUnderSampler(sampling_strategy=0.6, random_state=42),
+            #     LogisticRegression(class_weight={0: 35, 1: 65})
+            # )
+            # skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            # scores = cross_validate(
+            # pipe,
+            # data_video,
+            # data_reward,
+            # cv=skf,
+            # scoring=scoring,
+            # return_train_score=False
+            # )
+            #
+            # accuracy = scores['test_accuracy']
+            # recall = scores['test_recall']
+            # auc = scores['test_auc']
+            # f1 = scores['test_f1']
+            #
+            # print('------------------------------------------------------------')
+            # print(f'subject_id: {self.subject_id} | session: {self.session} | frame time: {frame_time}')
+            # print(f'accuracy: {accuracy} | recall: {recall} | f1: {f1} | auc: {auc}')
+            # print(f'missing video percentage: {missing_video_trials}')
+            # print('------------------------------------------------------------')
 
 
             # splits the data while conserving data distribution in each fold
@@ -381,6 +393,8 @@ class RewardSizeDecoder:
                 clf_trial_idx = {k: clf_trial_idx.get(k, []) + [test_index[i] for i in v] for k, v in clf_indexes.items()}
 
             full_roc_auc = compute_roc(full_y_probs, full_y_true)
+            full_pr_auc = average_precision_score(full_y_probs, full_y_true)
+
 
             # compute principal component k at t time point for tn, fp, fn, tp trials
             clf_indexes = confusion_indexes(full_y_true, full_y_pred)
@@ -389,6 +403,7 @@ class RewardSizeDecoder:
 
             all_frames_scores[frame_time] = folds_eval_scores
             all_frames_roc[frame_time] = full_roc_auc
+            all_frames_pr_auc[frame_time] = full_pr_auc
             all_frames_confusion[frame_time] = clf_trial_idx
             all_frames_pc_separated[frame_time] = separated_video
             all_frames_best_params[frame_time] = folds_params
@@ -400,6 +415,7 @@ class RewardSizeDecoder:
         to_dump = {
             "scores.pkl": all_frames_scores,
             "roc.pkl": all_frames_roc,
+            "pr_auc.pkl": all_frames_pr_auc,
             "trial_idx_separated.pkl": all_frames_confusion,
             "hyperparameters.pklq": all_frames_best_params,
         }
@@ -408,7 +424,7 @@ class RewardSizeDecoder:
             with open(fpath, "wb") as f:
                 pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
         import numpy as np
-        plot_results(self.saveroot, all_frames_scores, all_frames_roc, self.subject_id, self.session, self.model, frames_plot, int(np.floor(self.frame_rate)))
+        plot_results(self.saveroot, all_frames_scores, all_frames_roc, all_frames_pr_auc, self.subject_id, self.session, self.model, frames_plot, int(np.floor(self.frame_rate)))
         self.log.info("Decoder finished in %.3fs", time.perf_counter() - t0)
         return bin_frames_dic
 
@@ -427,7 +443,7 @@ if __name__ == '__main__':
     user = 'ShaniE'
     password = 'opala'
     dj_info = {'host_path': host, 'user_name': user, 'password': password}
-    video_frame_rates = [5] #[2, 5, 10, 20, 50]
+    video_frame_rates = [10] #[2, 5, 10, 20, 50]
     subject_lst = [464724, 464725, 463189, 463190] #[464724, 464725, 463189, 463190]
     session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]] # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
     all_sessions = {}
@@ -441,7 +457,6 @@ if __name__ == '__main__':
                     num_features=200,  # number of predictive features from video
                     frame_rate=vid_fr,  # neural frame rate(Hz)
                     time_bin=(-10, 50),  # trial bin duration(sec)
-                    missing_frames_lst=[7, 8, 9, 10],  # list of neural frames without corresponding video frames
                     original_video_path='D:/Arseny_behavior_video',  # path to raw original video data - shared video folder located on Z drive
                     model="LR",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
                     user_model_params=user_model_params,
@@ -449,19 +464,19 @@ if __name__ == '__main__':
                     resample_method='simple undersample',
                     # choose resample method to handle unbalanced data
                     dj_info=dj_info,  # data joint user credentials
-                    save_folder_name=f"cropped- video frame rate {vid_fr} Hz",
-                    # choose new folder name for each time you run the model with different parameters
-                    # choose new folder name for each time you run the model with different parameters
+                    save_folder_name=f"hparams search- fps {vid_fr} Hz",    # choose new folder name for each time you run the model with different parameters
+                    save_video_folder = f"processed video - fps {vid_fr} Hz",   # save processed video outputs (downsampled video, svd)
                     handle_omission='convert',
                     # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
                     clean_ignore=True,  # throw out ignore trials (trials in which the mouse was not responsive)
-                    find_parameters=False   # enable hyperparameters search
+                    find_parameters=True   # enable hyperparameters search
                 )
 
                 decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)
                 decoder.define_saveroot(reference_path=None,
                                         # data file path/ directory to save results, if None results will be save in the parent folder
                                         log_to_file=False)  # no file logs
+                decoder.save_user_parameters(fmt="excel")
 
 
                 frames_dic = decoder.decoder()

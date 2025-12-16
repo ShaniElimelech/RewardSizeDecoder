@@ -39,20 +39,20 @@ def keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, v
                 left_neighbors = left_neighbors[left_neighbors >= 0]
                 has_previous_large_neighbor = left_neighbors.size > 0 and np.any(reward_labels[left_neighbors] == 'large')
                 if has_previous_large_neighbor:
-                    '''
-                    start_original_trial = video_og_start_trials[trial_num]
-                    # Compute end index
-                    if len(video_og_start_trials) > trial_num + 1:
-                        end_original_trial = video_og_start_trials[trial_num + 1]
-                    else:
-                        end_original_trial = len(video_data)
 
-                    bad_large_idx.extend(range(int(start_original_trial), int(end_original_trial)))
-                    trial_duration = int(end_original_trial - start_original_trial)
-                    # Shift all subsequent trial start indices
-                    if trial_num + 1 < len(video_start_trials):
-                        video_start_trials[trial_num + 1:] = video_start_trials[trial_num + 1:] - trial_duration
-                    '''
+                    # start_original_trial = video_og_start_trials[trial_num]
+                    # # Compute end index
+                    # if len(video_og_start_trials) > trial_num + 1:
+                    #     end_original_trial = video_og_start_trials[trial_num + 1]
+                    # else:
+                    #     end_original_trial = len(video_data)
+                    #
+                    # bad_large_idx.extend(range(int(start_original_trial), int(end_original_trial)))
+                    # trial_duration = int(end_original_trial - start_original_trial)
+                    # # Shift all subsequent trial start indices
+                    # if trial_num + 1 < len(video_start_trials):
+                    #     video_start_trials[trial_num + 1:] = video_start_trials[trial_num + 1:] - trial_duration
+
                     bad_trials_idx.append(trial_num)
                     bad_l.append(trial_num)
 
@@ -93,8 +93,20 @@ def get_t_slice_video(start_trials, t_idx, video_array, neural_indexes, reward_l
     return video_data, labels_data
 
 
-def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bin: tuple, original_video_path: str , dj_info: dict, saveroot, logger,
-                     handle_omission: str ='convert', clean_ignore=True):
+def load_clean_align_data(
+        subject_id,
+        session,
+        num_features,
+        frame_rate,
+        time_bin: tuple,
+        original_video_path: str,
+        dj_info: dict,
+        saveroot,
+        saveroot_video,
+        logger,
+        handle_omission: str ='convert',
+        clean_ignore=True
+    ):
     """
     A multi alignment function that gets subject id and session and align all datasets (video, neural activity, reward size labels) that goes into the reward decoder.
     handle_omission: user can choose to throw out omission trials ('clean'), convert label to regular trial ('convert') or keep omission trials ('keep') in case of multi classification. clean and convert options are for binary classification.
@@ -128,8 +140,7 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
     clean_omission = True if handle_omission == 'clean' else False
     logger.debug('start trial alignment')
     # get trial new start and end frames - global alignment of trials to the first lick after go cue
-    #start_trials, end_trials, _, _ = align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin,
-                                                                   #dj_modules, clean_ignore, clean_omission, flag_electric_video=True)
+    # start_trials, end_trials, _, _ = align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin, dj_modules, clean_ignore, clean_omission, flag_electric_video=True)
     logger.info('finish trial alignment')
     # get reward size labels
     reward_labels = get_reward_size_labels(subject_id, session, dj_modules, handle_omission, clean_ignore)
@@ -137,10 +148,9 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
     #assert len(reward_labels) == len(start_trials), ('Lengths of reward_labels and start_trials do not match, '
                                                   #'please compare the lengths of original datasets in datajoint')
 
-    svd_path = os.path.join(saveroot, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
-    #svd_path = os.path.join('C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/my_run', 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
-    neural_indexes_path = os.path.join(saveroot, 'downsampled_n_v_data', f'{subject_id}', f'session{session}', f'neural_indexes.npy')
-    #neural_indexes_path = os.path.join('C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/my_run', 'downsampled_n_v_data', f'{subject_id}', f'session{session}', f'neural_indexes.npy')
+    svd_path = os.path.join(saveroot_video, f'{subject_id}', f'session{session}', 'video_svd', f'v_temporal_dynamics_2cameras.npy')
+
+    # neural_indexes_path = os.path.join(saveroot, 'downsampled_n_v_data', f'{subject_id}', f'session{session}', f'neural_indexes.npy')
 
     # check if neural indexes and video svd already exist
     #if os.path.exists(svd_path) and os.path.exists(neural_indexes_path):
@@ -152,32 +162,37 @@ def load_clean_align_data(subject_id, session, num_features, frame_rate, time_bi
     else:
         logger.debug('start video downsample and alignment')
         logger.info('start video downsample and alignment')
+
         # get aligned and downsampled video and neural frames indexes
         # Initialize videos
-        video0 = Video(subject_id, session, camera_num=0, video_path=None)
-        video1 = Video(subject_id, session, camera_num=1, video_path=None)
+        video0 = Video(subject_id, session, camera_num=0, batch_load=True, video_path=None)
+        video1 = Video(subject_id, session, camera_num=1, batch_load=True, video_path=None)
+
         # Align neural data to video data and downsample video
         #video0_array, neural_indexes = video0.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot, compute_neural_data=False)
         # once you computed neural array for one camera you dont need to repeat for the second
         #video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot, compute_neural_data=False)
 
-        video0.custom_temporal_downsampling(frame_rate, dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot)
-        video1.custom_temporal_downsampling(frame_rate, dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot)
+        # videos go through the full preprocessing pipeline
+        video0.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules)
+        video1.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules)
 
         logger.info('finish video downsample and alignment')
 
         logger.debug('start video svd')
+
         # get video features - compute svd for combined cameras
         pair = VideoPair(subject_id, session, video0, video1)
-        video_features = pair.compute_svd(frame_rate, saveroot)[:, : num_features]  # shape: (frames, features) num all session frames x 200 first pc's
+        video_features = pair.compute_svd(frame_rate, saveroot_video)[:, : num_features]  # shape: (frames, features) num all session frames x 200 first pc's
         logger.info('finish video svd')
 
     video_start_trials, video_og_start_trials = align_video_trials(subject_id, session, frame_rate, time_bin, dj_modules, clean_ignore=True, clean_omission=False)
+
     # keep trials that are padded from both sides with at least one regular trial
     # eliminate large trials that succeed large trials from video data
     video_start_trials, reward_labels, video_features = keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, video_features, step=2, preserve_large=False)
 
-    #return start_trials, reward_labels, neural_indexes, video_features
+    #return start_trials, reward_labels, video_features
     return video_start_trials, reward_labels, video_features
 
 
