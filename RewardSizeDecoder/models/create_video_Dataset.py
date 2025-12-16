@@ -47,12 +47,12 @@ def split_data(n_frames, start_trials):
 
 # ---------------- Define custom data sets -------------------
 class VideoFramesDataset(Dataset):
-    def __init__(self, frames_np, indices, transform=None):
+    def __init__(self, video_path, indices, transform=None):
         """
         frames_np: numpy array of shape [N, H, W, C] or [N, T, H, W, C]
         indices: list/np.array of indices that belong to this split (train/val/test)
         """
-        self.x = frames_np
+        self.video = np.load(video_path, mmap_mode="r")  # mmap once light weight
         self.idx = indices.astype(int)
         self.transform = transform
 
@@ -60,7 +60,7 @@ class VideoFramesDataset(Dataset):
         return len(self.idx)
 
     def __getitem__(self, i):
-        x = self.x[self.idx[i]]  # numpy slice
+        x = self.video[self.idx[i]] # numpy slice, load on demand
         # numpy -> torch
         x = torch.from_numpy(x).float()
         # dtype/scale

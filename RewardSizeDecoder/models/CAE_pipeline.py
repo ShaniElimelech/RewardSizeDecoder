@@ -129,7 +129,7 @@ class Trainer:
             list(encoder.parameters()) + list(decoder.parameters()),
             lr=self.lr, weight_decay=self.weight_decay
         )
-        scaler = torch.amp.GradScaler(enabled=self.use_cuda)
+        scaler = torch.cuda.amp.GradScaler(enabled=self.use_cuda)
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.max_epochs
         )
@@ -468,6 +468,10 @@ if __name__ == "__main__":
 
     # concat two cameras to get video with shape (N ,C=2, W=128, H=128)
     full_video = np.stack([video0.video_array, video1.video_array], axis=1)
+    # save concatenated full video for DataLoder
+    concat_video_path = os.path.join(video_save_dir, f'{subject_id}', f'session{session}', 'concat_video.npy')
+    np.save(concat_video_path, full_video)
+
     len_video = len(full_video)
     start_trials = fetch_video_start_trials(subject_id, session, frame_rate, dj_modules)
     # split video to data loaders
@@ -475,19 +479,18 @@ if __name__ == "__main__":
     # scale [0,1] -> [-1,1]
     #transform = transforms.Compose([transforms.Normalize(mean=[0.5], std=[0.5])])
     transform = None
-    train_ds = VideoFramesDataset(full_video, train_idx, transform)
-    val_ds = VideoFramesDataset(full_video, val_idx, transform)
-    test_ds = VideoFramesDataset(full_video, test_idx, transform)
+    train_ds = VideoFramesDataset(concat_video_path, train_idx, transform)
+    val_ds = VideoFramesDataset(concat_video_path, val_idx, transform)
+    test_ds = VideoFramesDataset(concat_video_path, test_idx, transform)
     import logging
     multiprocessing.log_to_stderr().setLevel(logging.CRITICAL)
 
-
     train_loader = DataLoader(train_ds, batch_size=64, shuffle=True,
-                              num_workers=4, pin_memory=True, persistent_workers=True)
+                              num_workers=0, pin_memory=False, persistent_workers=False)
     val_loader = DataLoader(val_ds, batch_size=64, shuffle=False,
-                            num_workers=4, pin_memory=True, persistent_workers=True)
+                            num_workers=0, pin_memory=False, persistent_workers=False)
     test_loader = DataLoader(test_ds, batch_size=64, shuffle=False,
-                             num_workers=4, pin_memory=True, persistent_workers=True)
+                             num_workers=0, pin_memory=False, persistent_workers=False)
 
 
     # Generate architectures
@@ -526,15 +529,15 @@ if __name__ == "__main__":
 
     # train again on train+val data on best model
     train_val_idx = np.concatenate([train_idx, val_idx])
-    train_val_ds = VideoFramesDataset(full_video, train_val_idx, transform)
-    train_val_loader = DataLoader(train_val_ds, batch_size=256, shuffle=True,
-                                  num_workers=4, pin_memory=True, persistent_workers=False)
+    train_val_ds = VideoFramesDataset(concat_video_path, train_val_idx, transform)
+    train_val_loader = DataLoader(train_val_ds, batch_size=64, shuffle=True,
+                                  num_workers=0, pin_memory=False, persistent_workers=False)
     best_val, best_epoch = Trainer(train_val_loader, None, max_epochs=best_epoch).train(
         enc, dec, early_stop=False)
 
     # Encode latents for all video frames
     full_idx = np.concatenate([train_idx, val_idx, test_idx])
-    full_v_ds = VideoFramesDataset(full_video, full_idx, transform)
+    full_v_ds = VideoFramesDataset(concat_video_path, full_idx, transform)
     extractor = LatentExtractor(enc)
     all_video_latents = extractor.encode(full_v_ds)     # shape: [N_frames, D]
     # save latents
