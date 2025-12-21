@@ -46,10 +46,10 @@ def confusion_indexes(y_true, y_pred):
     tp_idx = np.where((y_true == 1) & (y_pred == 1))[0]
 
     return {
-        "tn": tn_idx.tolist(),
-        "fp": fp_idx.tolist(),
-        "fn": fn_idx.tolist(),
-        "tp": tp_idx.tolist()
+        "TN": tn_idx.tolist(),
+        "FP": fp_idx.tolist(),
+        "FN": fn_idx.tolist(),
+        "TP": tp_idx.tolist()
     }
 
 
@@ -86,25 +86,25 @@ def _jsonable(x):
     return x
 
 
-def to_params_dict(self, exclude=("subject_id", "session", "dj_info", "user_model_params")) -> dict:
+def to_params_dict(object, exclude=("subject_id", "session", "dj_info", "user_model_params")) -> dict:
     """Return a flat dict of attributes, excluding some keys."""
-    params = {k: v for k, v in vars(self).items() if k not in set(exclude)}
+    params = {k: v for k, v in vars(object).items() if k not in set(exclude)}
     # Make JSON-safe for the JSON file (Excel doesn't care)
-    return {k: self._jsonable(v) for k, v in params.items()}
+    return {k: _jsonable(v) for k, v in params.items()}
 
 
-def save_parameters(self,
+def save_parameters(object,
                     fmt=("json", "excel"),
                     filename_stem="decoder_params",
                     exclude=("subject_id", "session", "dj_info", "user_model_params")):
     """Save parameters as JSON and/or Excel"""
 
-    root = Path(self.saveroot)
+    root = Path(object.saveroot)
     if isinstance(fmt, str):
         fmt = (fmt,)
     fmt = tuple(x.lower() for x in fmt)
 
-    params = self.to_params_dict(exclude=exclude)
+    params = to_params_dict(object, exclude=exclude)
     saved = {}
 
     # JSON
@@ -122,7 +122,7 @@ def save_parameters(self,
             # If some values are lists/arrays, pandas will write them as objects;
             # optionally stringify sequences for nicer cells:
             row = {
-                k: (json.dumps(self._jsonable(v), ensure_ascii=False)
+                k: (json.dumps(_jsonable(v), ensure_ascii=False)
                     if isinstance(v, (list, tuple, np.ndarray)) else v)
                 for k, v in params.items()
             }
@@ -134,7 +134,7 @@ def save_parameters(self,
             with open(p, "w", encoding="utf-8") as f:
                 for k, v in params.items():
                     if isinstance(v, (list, tuple, np.ndarray)):
-                        v = json.dumps(self._jsonable(v), ensure_ascii=False)
+                        v = json.dumps(_jsonable(v), ensure_ascii=False)
                     f.write(f"{k},{v}\n")
             saved["excel_fallback_csv"] = str(p)
 
