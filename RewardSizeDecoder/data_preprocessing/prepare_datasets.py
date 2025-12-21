@@ -148,7 +148,8 @@ def load_clean_align_data(
     #assert len(reward_labels) == len(start_trials), ('Lengths of reward_labels and start_trials do not match, '
                                                   #'please compare the lengths of original datasets in datajoint')
 
-    svd_path = os.path.join(saveroot_video, f'{subject_id}', f'session{session}', 'video_svd', f'v_temporal_dynamics_2cameras.npy')
+    # svd_path = os.path.join(saveroot_video, f'{subject_id}', f'session{session}', 'video_svd', f'v_temporal_dynamics_2cameras.npy')
+    svd_path = os.path.join(saveroot_video, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
 
     # neural_indexes_path = os.path.join(saveroot, 'downsampled_n_v_data', f'{subject_id}', f'session{session}', f'neural_indexes.npy')
 

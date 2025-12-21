@@ -3,11 +3,10 @@ import os
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-from click.core import batch
-from scipy import stats as sc
 import pickle
 import datajoint as dj
 import pandas as pd
+from scipy import stats as sc
 from .ExtractVideoNeuralAlignment import get_session_trials_aligned_frames, get_trials_data_table_for_mouse_session, get_all_trial_video_frames
 from scipy.ndimage import gaussian_filter1d
 from .block_svd import svd_in_blocks
@@ -30,8 +29,14 @@ class Video:
 
         folder_dir = os.path.join(video_save_dir, f'{self.subject_id}', f'session{self.session}')
         video_dir = os.path.join(folder_dir, f'downsampled_video_cam{self.camera_num}.npy')
-        if os.path.exists(video_dir):
-            self.video_array = np.load(video_dir)
+        old_video_path = os.path.join('C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/500 ms bin/downsampled_n_v_data',
+                                      f'{self.subject_id}', f'session{self.session}', f'downsampled_video_cam{self.camera_num}.avi')
+        # if os.path.exists(video_dir):
+        if os.path.exists(old_video_path):
+            # self.video_array = np.load(video_dir)
+            self.video_path = old_video_path
+            vid = self.open_video()
+            self.loaded = True
 
         else:
             if self.batch_load:
@@ -44,16 +49,16 @@ class Video:
                     self.custom_temporal_downsampling(frame_rate)
 
                     # resize image
-                    self.downsample_by_block_average(factor=2)
-
-                    if self.camera_num == 0:
-                        # crop video 0 to get shape (B,128,128)
-                        self.crop_frames(new_H=128, new_W=128)
-                    elif self.camera_num == 1:
-                        # pad video 1 to get shape (B,128,128)
-                        self.pad_frames(new_H=128, new_W=128)
-                    else:
-                        raise ValueError('camera_num must be 1 or 2')
+                    # self.downsample_by_block_average(factor=2)
+                    #
+                    # if self.camera_num == 0:
+                    #     # crop video 0 to get shape (B,128,128)
+                    #     self.crop_frames(new_H=120, new_W=115)
+                    # elif self.camera_num == 1:
+                    #     # pad video 1 to get shape (B,128,128)
+                    #     self.pad_frames(new_H=128, new_W=128)
+                    # else:
+                    #     raise ValueError('camera_num must be 1 or 2')
 
                     full_video_array.append(self.batch_array)
 
@@ -63,7 +68,6 @@ class Video:
             # loading video in one shot
             else:
                 # load videos
-                self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission)
                 self.video_array = np.concatenate(
                     list(self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission)),axis=0)
                 self.loaded = True
@@ -74,11 +78,11 @@ class Video:
                 if self.camera_num == 0:
                     # crop video 0 to get shape (B,128,128)
                     self.crop_frames(new_H=128, new_W=128)
-                if self.camera_num == 1:
-                    # pad video 1 to get shape (B,128,128)
-                    self.pad_frames(new_H=128, new_W=128)
-                else:
-                    raise ValueError('camera_num must be 1 or 2')
+                # if self.camera_num == 1:
+                #     # pad video 1 to get shape (B,128,128)
+                #     self.pad_frames(new_H=128, new_W=128)
+                # else:
+                #     raise ValueError('camera_num must be 1 or 2')
 
             # save processed videos
             os.makedirs(folder_dir, exist_ok=True)
@@ -258,11 +262,11 @@ class Video:
         # Reshape and block-average
         downsampled = video.reshape(T, H // factor, factor, W // factor, factor).mean(axis=(2, 4))
 
-        # Preserve original dtype (e.g. uint8)
+        # Preserve original dtype (uint8)
         if self.batch_load:
-            self.batch_array = np.rint(downsampled).astype(self.batch_array.dtype)
+            self.batch_array = np.rint(downsampled).astype(int)
         else:
-            self.video_array = np.rint(downsampled).astype(self.video_array.dtype)
+            self.video_array = np.rint(downsampled).astype(int)
 
     def crop_frames(self, new_H=None, new_W=None):
         """
@@ -407,31 +411,32 @@ class VideoPair:
         return flat0
 
     def compute_svd(self, frame_rate, save_root=None):
-        video_matrix = self.concatenate_flattened()
+        # video_matrix = self.concatenate_flattened()
 
-        X = np.asarray(video_matrix, dtype=np.float32, order="C")
-
+        # X = np.asarray(video_matrix, dtype=np.float32, order="C")
+        X = self.concatenate_flattened()
         std = X.std(axis=0)
         mask = std >= 1e-4
-        cols = np.where(mask)[0]
+        normalized = np.zeros_like(X)
+        normalized[:, mask] = sc.zscore(X[:, mask], axis=0)
+        # cols = np.where(mask)[0]
+        #
+        # # Normalize in-place, columnwise, in small blocks to cap memory
+        # block = 2048
+        # eps = 1e-12
+        # for i in range(0, len(cols), block):
+        #     c = cols[i:i + block]
+        #     m = X[:, c].mean(axis=0, dtype=np.float32)
+        #     s = X[:, c].std(axis=0, dtype=np.float32)
+        #     s = np.maximum(s, eps)  # avoid div-by-zero
+        #     X[:, c] -= m  # in-place center
+        #     X[:, c] /= s  # in-place scale
 
-        # Normalize in-place, columnwise, in small blocks to cap memory
-        block = 2048
-        eps = 1e-12
-        for i in range(0, len(cols), block):
-            c = cols[i:i + block]
-            m = X[:, c].mean(axis=0, dtype=np.float32)
-            s = X[:, c].std(axis=0, dtype=np.float32)
-            s = np.maximum(s, eps)  # avoid div-by-zero
-            X[:, c] -= m  # in-place center
-            X[:, c] /= s  # in-place scale
-
-        X[:, ~mask] = 0.0
-        normalized = X  # already normalized
+        # X[:, ~mask] = 0.0
+        # normalized = X  # already normalized
 
         #centered_video = np.zeros_like(video_matrix)
         #centered_video[:, mask] = np.mean(video_matrix[:, mask], axis=0)
-
 
         U, S, VT = np.linalg.svd(normalized, full_matrices=False)
         explained_var = (S ** 2) / np.sum(S ** 2)

@@ -2,11 +2,8 @@ import numpy as np
 from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score, brier_score_loss
 import optuna
 from sklearn.metrics import accuracy_score, precision_score, recall_score, log_loss
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.calibration import calibration_curve, CalibrationDisplay
-#import ml_insights as mli
 
 
 class LogisticRegressionModel:
@@ -53,7 +50,7 @@ class LogisticRegressionModel:
         return self.y_pred
 
     def make_objective(self, x, y):
-        cv = KFold(n_splits=5, shuffle=True, random_state=42)
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
         def objective(trial):
             # Sample hyperparameters
@@ -71,7 +68,7 @@ class LogisticRegressionModel:
             aucs = []
             thresholds = []
 
-            for train_idx, val_idx in cv.split(x):
+            for train_idx, val_idx in cv.split(x, y):
                 x_train, x_val = x[train_idx], x[val_idx]
                 y_train, y_val = y[train_idx], y[val_idx]
 
