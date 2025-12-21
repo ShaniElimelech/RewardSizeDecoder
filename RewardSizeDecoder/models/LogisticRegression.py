@@ -4,6 +4,7 @@ import optuna
 from sklearn.metrics import accuracy_score, precision_score, recall_score, log_loss
 from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
 
 class LogisticRegressionModel:
@@ -71,6 +72,11 @@ class LogisticRegressionModel:
             for train_idx, val_idx in cv.split(x, y):
                 x_train, x_val = x[train_idx], x[val_idx]
                 y_train, y_val = y[train_idx], y[val_idx]
+
+                # scale fold data
+                X_scaler = StandardScaler()
+                x_train = X_scaler.fit_transform(x_train)
+                x_val = X_scaler.transform(x_val)
 
                 # Re-initialize model with the current hyperparameters
                 self.model = LogisticRegression(**self.params)
