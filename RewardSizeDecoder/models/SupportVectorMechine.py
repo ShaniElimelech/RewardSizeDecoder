@@ -6,8 +6,7 @@ import time
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.svm import SVC
 from sklearn.svm import LinearSVC
-from sklearn.model_selection import KFold
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, KFold, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -92,7 +91,8 @@ class SVM:
             ])
 
             # Cross-validation and calculate AUC
-            auc = cross_val_score(pipeline, x, y, cv=5, scoring='roc_auc').mean()
+            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            auc = cross_val_score(pipeline, x, y, cv=cv, scoring='roc_auc').mean()
             return auc
 
         return objective
