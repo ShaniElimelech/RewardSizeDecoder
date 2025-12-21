@@ -1,7 +1,7 @@
 from sklearn.model_selection import StratifiedKFold, KFold
 from data_preprocessing.prepare_datasets import load_clean_align_data, get_t_slice_video
 from data_preprocessing.resample_data import random_undersample, no_resample, predict_ensemble_proba, predict_ensemble, random_undersample_and_smote_oversample
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, confusion_matrix
 from models.LinearDiscriminantAnalysis import LDA
 from models.LogisticRegression import LogisticRegressionModel
 from models.SupportVectorMechine import SVM
@@ -252,6 +252,7 @@ class RewardSizeDecoder:
         all_frames_roc = {}
         all_frames_pr_auc = {}
         all_frames_confusion = {}
+        all_frames_confusion_idx = {}
         all_frames_pc_separated = {}
         all_frames_best_params = {}
         bin_frames_dic = {}
@@ -264,8 +265,11 @@ class RewardSizeDecoder:
         for frame_idx, frame_time in enumerate(frames_bin):
             trials_len = len(reward_labels)  # number of all trials within session
             #data_video, data_reward = get_t_slice_video(start_trials, frame_idx, video_features, neural_indexes, reward_labels)
-            t_trials = (start_trials + frame_idx).astype(int)
-            t_trials = np.array([t if 0 <= t < len(video_features) else float('nan') for t in t_trials])
+            t_trials = start_trials + frame_idx
+            t_trials = np.array([
+                int(t) if np.isfinite(t) and 0 <= t < len(video_features) else np.nan
+                for t in t_trials
+            ])
             valid_mask =~np.isnan(t_trials)
             valid_indices = t_trials[valid_mask].astype(int)
             data_video = video_features[valid_indices]
@@ -393,18 +397,20 @@ class RewardSizeDecoder:
                 clf_trial_idx = {k: clf_trial_idx.get(k, []) + [test_index[i] for i in v] for k, v in clf_indexes.items()}
 
             full_roc_auc = compute_roc(full_y_probs, full_y_true)
-            full_pr_auc = average_precision_score(full_y_probs, full_y_true)
-
+            full_pr_auc = average_precision_score(full_y_true, full_y_probs)
+            tn, fp, fn, tp = confusion_matrix(full_y_true, full_y_pred).ravel()
+            clf_confusion = {'TN': tn, 'FP': fp, 'FN': fn, 'TP': tp}
+            clf_indexes = confusion_indexes(full_y_true, full_y_pred)
 
             # compute principal component k at t time point for tn, fp, fn, tp trials
-            clf_indexes = confusion_indexes(full_y_true, full_y_pred)
             k_pc = 0
             separated_video = separate_video_activity(data_video[:, k_pc], clf_indexes)
 
             all_frames_scores[frame_time] = folds_eval_scores
             all_frames_roc[frame_time] = full_roc_auc
             all_frames_pr_auc[frame_time] = full_pr_auc
-            all_frames_confusion[frame_time] = clf_trial_idx
+            all_frames_confusion[frame_time] = clf_confusion
+            all_frames_confusion_idx[frame_time] = clf_trial_idx
             all_frames_pc_separated[frame_time] = separated_video
             all_frames_best_params[frame_time] = folds_params
 
@@ -416,7 +422,8 @@ class RewardSizeDecoder:
             "scores.pkl": all_frames_scores,
             "roc.pkl": all_frames_roc,
             "pr_auc.pkl": all_frames_pr_auc,
-            "trial_idx_separated.pkl": all_frames_confusion,
+            "confusion.pkl": all_frames_confusion,
+            "trial_idx_separated.pkl": all_frames_confusion_idx,
             "hyperparameters.pklq": all_frames_best_params,
         }
         for fname, obj in to_dump.items():
@@ -424,7 +431,19 @@ class RewardSizeDecoder:
             with open(fpath, "wb") as f:
                 pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
         import numpy as np
-        plot_results(self.saveroot, all_frames_scores, all_frames_roc, all_frames_pr_auc, self.subject_id, self.session, self.model, frames_plot, int(np.floor(self.frame_rate)))
+        plot_results(
+            self.saveroot,
+            all_frames_scores,
+            all_frames_roc,
+            all_frames_pr_auc,
+            all_frames_confusion,
+            all_frames_confusion_idx,
+            self.subject_id,
+            self.session,
+            self.model,
+            frames_plot,
+            int(np.floor(self.frame_rate))
+        )
         self.log.info("Decoder finished in %.3fs", time.perf_counter() - t0)
         return bin_frames_dic
 
@@ -443,7 +462,7 @@ if __name__ == '__main__':
     user = 'ShaniE'
     password = 'opala'
     dj_info = {'host_path': host, 'user_name': user, 'password': password}
-    video_frame_rates = [10] #[2, 5, 10, 20, 50]
+    video_frame_rates = [5] #[2, 5, 10, 20, 50]
     subject_lst = [464724, 464725, 463189, 463190] #[464724, 464725, 463189, 463190]
     session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]] # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
     all_sessions = {}
@@ -464,8 +483,8 @@ if __name__ == '__main__':
                     resample_method='simple undersample',
                     # choose resample method to handle unbalanced data
                     dj_info=dj_info,  # data joint user credentials
-                    save_folder_name=f"hparams search- fps {vid_fr} Hz",    # choose new folder name for each time you run the model with different parameters
-                    save_video_folder = f"processed video - fps {vid_fr} Hz",   # save processed video outputs (downsampled video, svd)
+                    save_folder_name=f"new-hparams search- fps {vid_fr} Hz",    # choose new folder name for each time you run the model with different parameters
+                    save_video_folder = f"cropped- video frame rate {vid_fr} Hz",   # save processed video outputs (downsampled video, svd)
                     handle_omission='convert',
                     # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
                     clean_ignore=True,  # throw out ignore trials (trials in which the mouse was not responsive)
