@@ -54,24 +54,31 @@ def plot_score_over_time(ave_session, stem_session, frame_rate, title, save_path
 
 
 def scores_ave(datapath, model, subject_lst, session_lists, frame_rate, param, metric):
-    savepath = os.path.join(datapath, 'figures_50_50_ratio', f'Decoder {model} output', 'averages')
+    savepath = os.path.join(datapath, 'figures', f'Decoder {model} output', 'averages')
     os.makedirs(savepath, exist_ok=True)
     all_animals_all_time = {}
     for i, subject in enumerate(subject_lst):
         session_list = session_lists[i]
         all_sessions_all_time = {}
         for j, session in enumerate(session_list):
+            print(subject, session)
             data = os.path.join(datapath, f'Decoder {model} output' ,f'{subject}', f'session{session}', f'{metric}.pkl')
             if not os.path.exists(data):
                 continue
             params_dict = pickle.load(open(data, 'rb'))
-            for outer_k, inner_dict in params_dict.items():
-                if param == 'auc':
-                    ave_score = round(inner_dict['auc'],2)
-                else:
-                    score_folds = np.array(inner_dict[param])
-                    ave_score = round(np.mean(score_folds),2)
-                all_sessions_all_time[outer_k] = all_sessions_all_time.setdefault(outer_k, []) + [ave_score]
+            if param == 'PR-auc':
+                for key, value in params_dict.items():
+                    score = round(value, 2)
+                    all_sessions_all_time[key] = all_sessions_all_time.setdefault(key, []) + [score]
+
+            else:
+                for outer_k, inner_dict in params_dict.items():
+                    if param == 'auc':
+                        ave_score = round(inner_dict[param],2)
+                    else:
+                        score_folds = np.array(inner_dict[param])
+                        ave_score = round(np.mean(score_folds),2)
+                    all_sessions_all_time[outer_k] = all_sessions_all_time.setdefault(outer_k, []) + [ave_score]
 
         ave_session = {key: round(sum(item)/len(item),2) for key, item in all_sessions_all_time.items()}
         stem_sessions = {key: round(np.std(np.array(item)/ np.sqrt(len(item))),2) for key, item in all_sessions_all_time.items()}
@@ -89,12 +96,18 @@ def scores_ave(datapath, model, subject_lst, session_lists, frame_rate, param, m
     plot_score_over_time(ave_animals, stem_animals, frame_rate, title, save_path, ylabel=f'{param} score')
 
 
-metrics = ['scores', 'roc']
-params = ['auc', 'accuracy', 'precision', 'recall']
-param = 'recall'
+metrics = ['scores', 'roc', 'pr_auc']
+params = ['PR-auc', 'auc', 'accuracy', 'precision', 'recall']
 subject_lst =  [464724, 464725, 463189, 463190]
 session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 8, 9], [1, 2, 3, 9], [2, 3, 5, 6, 10]]  # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 2, 3, 4, 9], [2, 3, 5, 6, 10]]
-model = 'LR'
+model = 'SVM'    # ['LR', 'LDA', 'SVM']
 frame_rate = 5
-data_path = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/cropped- video frame rate 5 Hz'
-scores_ave(data_path, model, subject_lst, session_lists, frame_rate, param, metric='scores')
+data_path = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/new-hparams search- fps 5 Hz'
+for param in params:
+    if param == 'auc':
+        metric = 'roc'
+    elif param == 'PR-auc':
+        metric = 'pr_auc'
+    else:
+        metric = 'scores'
+    scores_ave(data_path, model, subject_lst, session_lists, frame_rate, param=param, metric=metric)
