@@ -411,32 +411,33 @@ class VideoPair:
         return flat0
 
     def compute_svd(self, frame_rate, save_root=None):
-        # video_matrix = self.concatenate_flattened()
+        video_matrix = self.concatenate_flattened()
 
-        # X = np.asarray(video_matrix, dtype=np.float32, order="C")
-        X = self.concatenate_flattened()
+        X = np.asarray(video_matrix,
+                       dtype=np.float64,
+                       )
+
         std = X.std(axis=0)
         mask = std >= 1e-4
-        normalized = np.zeros_like(X)
-        normalized[:, mask] = sc.zscore(X[:, mask], axis=0)
-        # cols = np.where(mask)[0]
-        #
-        # # Normalize in-place, columnwise, in small blocks to cap memory
-        # block = 2048
-        # eps = 1e-12
-        # for i in range(0, len(cols), block):
-        #     c = cols[i:i + block]
-        #     m = X[:, c].mean(axis=0, dtype=np.float32)
-        #     s = X[:, c].std(axis=0, dtype=np.float32)
-        #     s = np.maximum(s, eps)  # avoid div-by-zero
-        #     X[:, c] -= m  # in-place center
-        #     X[:, c] /= s  # in-place scale
+        # normalized = np.zeros_like(X)
+        # normalized[:, mask] = sc.zscore(X[:, mask], axis=0)
+        cols = np.where(mask)[0]
 
-        # X[:, ~mask] = 0.0
-        # normalized = X  # already normalized
+        # Normalize in-place, columnwise, in small blocks to cap memory
+        block = 2048
+        for i in range(0, len(cols), block):
+            c = cols[i:i + block]
+            m = X[:, c].mean(axis=0,
+                             dtype=np.float64
+                             )
+            s = X[:, c].std(axis=0,
+                            dtype=np.float64
+                            )
+            X[:, c] -= m  # in-place center
+            X[:, c] /= s  # in-place scale
 
-        #centered_video = np.zeros_like(video_matrix)
-        #centered_video[:, mask] = np.mean(video_matrix[:, mask], axis=0)
+        X[:, ~mask] = 0.0
+        normalized = X  # already normalized
 
         U, S, VT = np.linalg.svd(normalized, full_matrices=False)
         explained_var = (S ** 2) / np.sum(S ** 2)
