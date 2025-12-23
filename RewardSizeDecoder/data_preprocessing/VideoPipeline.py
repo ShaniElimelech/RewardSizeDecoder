@@ -322,7 +322,7 @@ class Video:
             frames = self.video_array
         i = 0
         jump = int(250 // frame_rate)
-        new_num_frames = frames.shape[0] // jump + 1
+        new_num_frames = int(np.ceil(frames.shape[0] / jump))
         short_vdata = np.zeros((new_num_frames, frames.shape[1], frames.shape[2]))
         curr_frame = 0
         while i < len(frames):
