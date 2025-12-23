@@ -29,31 +29,32 @@ class Video:
 
         folder_dir = os.path.join(video_save_dir, f'{self.subject_id}', f'session{self.session}')
         video_dir = os.path.join(folder_dir, f'downsampled_video_cam{self.camera_num}.npy')
-        old_video_path = os.path.join('C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/500 ms bin/downsampled_n_v_data',
-                                      f'{self.subject_id}', f'session{self.session}', f'downsampled_video_cam{self.camera_num}.avi')
-        # if os.path.exists(video_dir):
-        if os.path.exists(old_video_path):
-            # self.video_array = np.load(video_dir)
-            self.video_path = old_video_path
-            vid = self.open_video()
+
+        if os.path.exists(video_dir):
+            self.video_array = np.load(video_dir)
             self.loaded = True
 
         else:
             if self.batch_load:
                 # preprocessing video in batches due to small memory
+                num_trials = 0
                 full_video_array = []
-                for batch_video in self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission):  # generator function - load batch - by trial video
+                for batch_video in self.create_full_video_array(dj_modules, original_video_path, clean_ignore,
+                                                                clean_omission):  # generator function - load batch - by trial video
                     self.batch_array = batch_video
+                    num_trials += 1
+                    print('num_trials:', num_trials)
 
                     # temporal downsample
                     self.custom_temporal_downsampling(frame_rate)
 
+                    if self.camera_num == 0:
+                        # crop video 0 to get shape (B,128,128)
+                        self.crop_frames(new_H=240, new_W=230)
+
                     # resize image
-                    # self.downsample_by_block_average(factor=2)
-                    #
-                    # if self.camera_num == 0:
-                    #     # crop video 0 to get shape (B,128,128)
-                    #     self.crop_frames(new_H=120, new_W=115)
+                    self.downsample_by_block_average(factor=2)
+
                     # elif self.camera_num == 1:
                     #     # pad video 1 to get shape (B,128,128)
                     #     self.pad_frames(new_H=128, new_W=128)
@@ -68,8 +69,17 @@ class Video:
             # loading video in one shot
             else:
                 # load videos
-                self.video_array = np.concatenate(
-                    list(self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission)),axis=0)
+                self.video_array = []
+                # self.video_array = np.concatenate(
+                #     list(self.create_full_video_array(dj_modules, original_video_path, clean_ignore, clean_omission)),axis=0)
+                num_trials = 0
+                for batch in self.create_full_video_array(dj_modules, original_video_path, clean_ignore,
+                                                          clean_omission):
+                    self.video_array.append(batch)
+                    num_trials += 1
+                    print('num_trials:', num_trials)
+
+                self.video_array = np.concatenate(self.video_array, axis=0)
                 self.loaded = True
 
                 # temporal downsample
@@ -77,7 +87,11 @@ class Video:
 
                 if self.camera_num == 0:
                     # crop video 0 to get shape (B,128,128)
-                    self.crop_frames(new_H=128, new_W=128)
+                    self.crop_frames(new_H=240, new_W=230)
+
+                # resize image
+                self.downsample_by_block_average(factor=2)
+
                 # if self.camera_num == 1:
                 #     # pad video 1 to get shape (B,128,128)
                 #     self.pad_frames(new_H=128, new_W=128)
@@ -86,7 +100,7 @@ class Video:
 
             # save processed videos
             os.makedirs(folder_dir, exist_ok=True)
-            np.save(video_dir, self.video_array)
+            np.save(video_dir, np.rint(self.video_array).astype(int))
 
     def open_video(self):
         """
