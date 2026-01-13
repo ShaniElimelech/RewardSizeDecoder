@@ -32,7 +32,7 @@ def compute_roc(y_probs, y_true):
         "fpr": fpr,
         "tpr": tpr,
         "thresholds": thresholds,
-        "auc": auc_score
+        "roc_auc": auc_score
     }
 
 

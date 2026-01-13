@@ -43,7 +43,7 @@ class Video:
                                                                 clean_omission):  # generator function - load batch - by trial video
                     self.batch_array = batch_video
                     num_trials += 1
-                    print('num_trials:', num_trials)
+                    # print('num_trials:', num_trials)
 
                     # temporal downsample
                     self.custom_temporal_downsampling(frame_rate)

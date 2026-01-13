@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 import time
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, precision_score, recall_score
-from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score
+from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score, average_precision_score
 
 
 class LDA:
@@ -85,7 +85,11 @@ class LDA:
         return probs_class1
 
     def compute_metrics(self, y_true):
-        """Compute accuracy, precision, recall, F1 score, and specificity using confusion matrix."""
+        """
+        Compute accuracy, precision, recall, F1 score, and specificity using confusion matrix.
+        compute ROC auc and PR auc using ROC and PR curve.
+        """
+        # compute confusion matrix
 
         tn, fp, fn, tp = confusion_matrix(y_true, self.y_pred).ravel()
         accuracy = (tp + tn) / (tp + tn + fp + fn)
@@ -94,12 +98,20 @@ class LDA:
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) != 0 else 0
         specificity = tn / (tn + fp) if (tn + fp) != 0 else 0
 
+        # compute roc auc
+        roc_auc = roc_auc_score(y_true, self.y_probs)
+
+        # compute pr auc
+        pr_auc = average_precision_score(y_true, self.y_probs)
+
         return {
             "accuracy": accuracy,
             "precision": precision,
             "recall": recall,
             "f1_score": f1,
-            "specificity": specificity
+            "specificity": specificity,
+            "roc_auc_folds": roc_auc,
+            "pr_auc_folds": pr_auc
         }
 
     def roc(self, y_true):
@@ -113,6 +125,6 @@ class LDA:
             "fpr": fpr,
             "tpr": tpr,
             "thresholds": thresholds,
-            "auc": auc_score}
+            "roc_auc": auc_score}
 
 

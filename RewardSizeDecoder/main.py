@@ -1,7 +1,7 @@
 from sklearn.model_selection import StratifiedKFold, KFold
 from data_preprocessing.prepare_datasets import load_clean_align_data, get_t_slice_video
-from data_preprocessing.resample_data import random_undersample, no_resample, predict_ensemble_proba, predict_ensemble, random_undersample_and_smote_oversample
-from sklearn.metrics import average_precision_score, confusion_matrix
+from data_preprocessing.resample_data import random_undersample, no_resample, predict_ensemble_proba, predict_ensemble, random_undersample_and_smote_oversample, custom_resample, custom_resample2
+from sklearn.metrics import average_precision_score, confusion_matrix, roc_auc_score
 from models.LinearDiscriminantAnalysis import LDA
 from models.LogisticRegression import LogisticRegressionModel
 from models.SupportVectorMechine import SVM
@@ -9,7 +9,7 @@ from decoder_utils.decoder_utils import (compute_eval_metrics, compute_roc, save
                            confusion_indexes, separate_video_activity, binarize_target)
 from decoder_utils.logging_tools import make_console_logger, attach_file_handler
 import logging
-from plot_results import plot_results
+from visualization.plot_results import plot_results
 from sklearn.preprocessing import StandardScaler
 import os
 import pickle
@@ -38,7 +38,6 @@ class RewardSizeDecoder:
                  find_parameters=True,
                  verbose=False
                  ):
-
         self.subject_id = subject_id
         self.session = session
         self.num_features = num_features
@@ -262,6 +261,7 @@ class RewardSizeDecoder:
         self.log.info('start model training on all frames')
         missing_vid_dic = {}
 
+
         for frame_idx, frame_time in enumerate(frames_bin):
             trials_len = len(reward_labels)  # number of all trials within session
             #data_video, data_reward = get_t_slice_video(start_trials, frame_idx, video_features, neural_indexes, reward_labels)
@@ -282,7 +282,6 @@ class RewardSizeDecoder:
             full_y_pred = np.empty_like(data_reward, dtype=np.int64)
             full_y_probs = np.empty((len(data_reward)), dtype=np.float64)
             skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
             leftover_trials_len = len(data_reward)  # number of trials with video matching the neural frame
             missing_video_trials = round(1- leftover_trials_len/trials_len, 2)
             bin_frames_dic[frame_time] = missing_video_trials
@@ -296,49 +295,6 @@ class RewardSizeDecoder:
                 continue
             frames_plot.append(frame_time)
 
-            # from imblearn.pipeline import make_pipeline
-            # from imblearn.over_sampling import SMOTE
-            # from imblearn.under_sampling import RandomUnderSampler
-            # from sklearn.preprocessing import StandardScaler
-            # from sklearn.linear_model import LogisticRegression
-            # from sklearn.model_selection import LeaveOneOut, cross_validate
-            # from sklearn.metrics import recall_score, confusion_matrix
-            # import numpy as np
-            #
-            # scoring = {
-            # 'accuracy': 'accuracy',
-            # 'recall': 'recall',
-            # 'auc': 'roc_auc',
-            # 'f1': 'f1'
-            # }
-            #
-            # pipe = make_pipeline(
-            #     StandardScaler(),
-            #     SMOTE(sampling_strategy=0.4, k_neighbors=1, random_state=42),
-            #     RandomUnderSampler(sampling_strategy=0.6, random_state=42),
-            #     LogisticRegression(class_weight={0: 35, 1: 65})
-            # )
-            # skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-            # scores = cross_validate(
-            # pipe,
-            # data_video,
-            # data_reward,
-            # cv=skf,
-            # scoring=scoring,
-            # return_train_score=False
-            # )
-            #
-            # accuracy = scores['test_accuracy']
-            # recall = scores['test_recall']
-            # auc = scores['test_auc']
-            # f1 = scores['test_f1']
-            #
-            # print('------------------------------------------------------------')
-            # print(f'subject_id: {self.subject_id} | session: {self.session} | frame time: {frame_time}')
-            # print(f'accuracy: {accuracy} | recall: {recall} | f1: {f1} | auc: {auc}')
-            # print(f'missing video percentage: {missing_video_trials}')
-            # print('------------------------------------------------------------')
-
 
             # splits the data while conserving data distribution in each fold
             for train_index, test_index in skf.split(data_video, data_reward):
@@ -351,9 +307,9 @@ class RewardSizeDecoder:
                 if self.resample_method == 'undersample and ensemble':
                     n_models = 5  # the number of different classifiers that will be trained
                     models = []
-                    X_train_us, y_train_us = random_undersample(X_train, y_train)
 
                     for i in range(n_models):
+                        X_train_us, y_train_us = random_undersample(X_train, y_train)
                         clf = model_dict[self.model](**user_model_params[self.model])
                         if self.model in ['SVM', 'LR']:
                             clf.find_best_params(X_train_us, y_train_us)  # tune hyperparameters
@@ -369,9 +325,11 @@ class RewardSizeDecoder:
                     y_proba = predict_ensemble_proba(models, X_test)
                     eval_scores = compute_eval_metrics(y_pred, y_test)
 
+
                 else:
                     X_train_us, y_train_us = resample_dict[self.resample_method](X_train, y_train)
-                    clf = model_dict[self.model](**user_model_params[self.model])
+                    # X_train_us, y_train_us = custom_resample2(X_train, y_train)
+                    clf = model_dict[self.model](**self.user_model_params[self.model])
                     if self.model in ['SVM', 'LR'] and self.find_parameters:
                         clf.find_best_params(X_train_us, y_train_us)
                         best_params = clf.get_best_params()
@@ -387,6 +345,7 @@ class RewardSizeDecoder:
                     y_pred = clf.predict(X_test)
                     y_proba = clf.predict_proba(X_test)
                     eval_scores = clf.compute_metrics(y_test)
+
 
                 full_y_true[test_index] = y_test
                 full_y_pred[test_index] = y_pred
@@ -425,6 +384,7 @@ class RewardSizeDecoder:
             "confusion.pkl": all_frames_confusion,
             "trial_idx_separated.pkl": all_frames_confusion_idx,
             "hyperparameters.pklq": all_frames_best_params,
+            "pc_class_groups": all_frames_pc_separated,
         }
         for fname, obj in to_dump.items():
             fpath = os.path.join(savedir, fname)
@@ -438,6 +398,7 @@ class RewardSizeDecoder:
             all_frames_pr_auc,
             all_frames_confusion,
             all_frames_confusion_idx,
+            all_frames_pc_separated,
             self.subject_id,
             self.session,
             self.model,
@@ -445,7 +406,7 @@ class RewardSizeDecoder:
             int(np.floor(self.frame_rate))
         )
         self.log.info("Decoder finished in %.3fs", time.perf_counter() - t0)
-        return bin_frames_dic
+        return all_frames_scores
 
 
 
@@ -457,48 +418,44 @@ if __name__ == '__main__':
 
     supported_resampling = ['No resample', 'combine undersample(random) and oversample(SMOTE)', 'simple undersample', 'undersample and ensemble']
     supported_models = ['LDA', 'SVM', 'LR']
-    user_model_params = {'LDA': {}, 'SVM': {'probability': True}, 'LR': {}}
+    user_model_params = {'LDA': {}, 'SVM': {'probability': True}, 'LR': {'thresh':0.65}}
     host = "arseny-lab.cmte3q4ziyvy.il-central-1.rds.amazonaws.com"
     user = 'ShaniE'
     password = 'opala'
     dj_info = {'host_path': host, 'user_name': user, 'password': password}
-    video_frame_rates = [5] #[2, 5, 10, 20, 50]
-    subject_lst = [464724, 464725, 463189, 463190] #[464724, 464725, 463189, 463190]
-    session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]] # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
+    video_frame_rates = [10]     #[2, 5, 10, 20, 50]
+    subject_lst = [463189]  #   [464724, 464725, 463189, 463190]
+    session_lists = [[4]]    #  [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
     all_sessions = {}
     for vid_fr in video_frame_rates:
         for i, subject in enumerate(subject_lst):
             session_list = session_lists[i]
             for j, session in enumerate(session_list):
                 decoder = RewardSizeDecoder(
-                    subject_id=subject,  # subject id
-                    session=session,  # session number
-                    num_features=200,  # number of predictive features from video
-                    frame_rate=vid_fr,  # neural frame rate(Hz)
-                    time_bin=(-10, 50),  # trial bin duration(sec)
-                    original_video_path='D:/Arseny_behavior_video',  # path to raw original video data - shared video folder located on Z drive
-                    model="LR",  # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
-                    user_model_params=user_model_params,
-                    # model hyperparameters, if not specify then the default will be set/ apply parameters search
-                    resample_method='simple undersample',
-                    # choose resample method to handle unbalanced data
-                    dj_info=dj_info,  # data joint user credentials
-                    save_folder_name=f"new-hparams search- fps {vid_fr} Hz",    # choose new folder name for each time you run the model with different parameters
-                    save_video_folder = f"cropped- video frame rate {vid_fr} Hz",   # save processed video outputs (downsampled video, svd)
-                    handle_omission='convert',
-                    # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
-                    clean_ignore=True,  # throw out ignore trials (trials in which the mouse was not responsive)
-                    find_parameters=True   # enable hyperparameters search
+                    subject_id=subject,                                 # subject id
+                    session=session,                                    # session number
+                    num_features=200,                                   # number of predictive features from video
+                    frame_rate=vid_fr,                                  # neural frame rate(Hz)
+                    time_bin=(-10, 50),                                 # trial bin duration(sec)
+                    original_video_path='D:/Arseny_behavior_video',     # path to raw original video data
+                    model="LR",                                         # type of classification model to apply on data - supported_models = ['LDA', 'SVM', 'LR']
+                    user_model_params=user_model_params,                # model hyperparameters, if not specify then the default will be set/ apply parameters search
+                    resample_method='simple undersample',               # choose resample method to handle unbalanced data
+                    dj_info=dj_info,                                    # data joint user credentials
+                    save_folder_name=f"prediction - fps 10 Hz",      # choose new folder name for each time you run the model with different parameters
+                    save_video_folder = f"processed video - fps {vid_fr} Hz",  # save processed video outputs (downsampled video, svd)
+                    handle_omission='convert',                          # ['keep'(no change), 'clean'(throw omission trials), 'convert'(convert to regular)]
+                    clean_ignore=True,                                  # throw out ignore trials (trials in which the mouse was not responsive)
+                    find_parameters=False                               # enable hyperparameters search
                 )
 
                 decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)
-                decoder.define_saveroot(reference_path=None,
-                                        # data file path/ directory to save results, if None results will be save in the parent folder
-                                        log_to_file=False)  # no file logs
+                decoder.define_saveroot(reference_path=None,            # data file path/ directory to save results, if None results will be save in the parent folder
+                                        log_to_file=False)              # dont save logs to file
                 decoder.save_user_parameters(fmt="excel")
 
 
-                frames_dic = decoder.decoder()
+                all_frames_scores = decoder.decoder()
 
 
 

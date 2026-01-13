@@ -1,6 +1,6 @@
 import os.path
-from .trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
-from .VideoPipeline import Video, VideoPair
+from data_preprocessing.trial_alignment import align_trials_and_get_lickrate, get_reward_size_labels
+from data_preprocessing.VideoPipeline import Video, VideoPair
 import numpy as np
 import datajoint as dj
 import logging
@@ -30,29 +30,17 @@ def keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, v
             neighbors = neighbors[(neighbors >= 0) & (neighbors < n_trials)]
 
         # Any neighbor labeled 'large'
+        trial_label = reward_labels[trial_num]
+        labels = reward_labels[neighbors]
         has_large_neighbor = neighbors.size > 0 and np.any(reward_labels[neighbors] == 'large')
 
         if has_large_neighbor:
             if reward_labels[trial_num] == 'large' and preserve_large:
-                # If current and previous trials are 'large', delete from video data
+                # If current and previous trials are 'large'
                 left_neighbors = np.arange(trial_num - step, trial_num)
                 left_neighbors = left_neighbors[left_neighbors >= 0]
                 has_previous_large_neighbor = left_neighbors.size > 0 and np.any(reward_labels[left_neighbors] == 'large')
                 if has_previous_large_neighbor:
-
-                    # start_original_trial = video_og_start_trials[trial_num]
-                    # # Compute end index
-                    # if len(video_og_start_trials) > trial_num + 1:
-                    #     end_original_trial = video_og_start_trials[trial_num + 1]
-                    # else:
-                    #     end_original_trial = len(video_data)
-                    #
-                    # bad_large_idx.extend(range(int(start_original_trial), int(end_original_trial)))
-                    # trial_duration = int(end_original_trial - start_original_trial)
-                    # # Shift all subsequent trial start indices
-                    # if trial_num + 1 < len(video_start_trials):
-                    #     video_start_trials[trial_num + 1:] = video_start_trials[trial_num + 1:] - trial_duration
-
                     bad_trials_idx.append(trial_num)
                     bad_l.append(trial_num)
 
@@ -64,9 +52,7 @@ def keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, v
                 if reward_labels[trial_num] == 'large':
                     bad_l.append(trial_num)
 
-    binary_rewards = reward_labels == 'large'
-    count_large_tot = np.sum(binary_rewards)
-    count_bad_large = len(bad_l)
+
     if bad_large_idx:
         bad_large_idx = np.unique(np.clip(np.asarray(bad_large_idx, dtype=int), 0, len(video_data) - 1))
         video_data = np.delete(video_data, bad_large_idx, axis=0)  # axis=0 for safety
@@ -75,6 +61,11 @@ def keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, v
         bad_trials_idx = np.unique(np.asarray(bad_trials_idx, dtype=int))
         video_start_trials = np.delete(video_start_trials, bad_trials_idx, axis=0)
         reward_labels = np.delete(reward_labels, bad_trials_idx, axis=0)
+
+    binary_rewards = reward_labels == 'large'
+    count_large_tot = np.sum(binary_rewards)
+    perc = count_large_tot / len(reward_labels)
+    count_bad_large = len(bad_l)
 
     return video_start_trials, reward_labels, video_data
 
@@ -148,8 +139,8 @@ def load_clean_align_data(
     #assert len(reward_labels) == len(start_trials), ('Lengths of reward_labels and start_trials do not match, '
                                                   #'please compare the lengths of original datasets in datajoint')
 
-    # svd_path = os.path.join(saveroot_video, f'{subject_id}', f'session{session}', 'video_svd', f'v_temporal_dynamics_2cameras.npy')
-    svd_path = os.path.join(saveroot_video, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
+    svd_path = os.path.join(saveroot_video, f'{subject_id}', f'session{session}', 'video_svd', f'v_temporal_dynamics_2cameras.npy')
+    # svd_path = os.path.join(saveroot_video, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
 
     # neural_indexes_path = os.path.join(saveroot, 'downsampled_n_v_data', f'{subject_id}', f'session{session}', f'neural_indexes.npy')
 
@@ -158,6 +149,8 @@ def load_clean_align_data(
     if os.path.exists(svd_path):
         #neural_indexes = np.load(neural_indexes_path)
         video_features = np.load(svd_path)[:, : num_features]
+        # video_features = np.load(svd_path)[:, pc_single].reshape(-1, 1)
+        # video_features = np.delete(video_features, pc_remove, axis=1)
         logger.info('video svd and neural_indexes already exist -> finish loading svd')
 
     else:
@@ -175,8 +168,8 @@ def load_clean_align_data(
         #video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot, compute_neural_data=False)
 
         # videos go through the full preprocessing pipeline
-        video0.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules)
-        video1.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules)
+        video0.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules, clean_ignore, clean_omission)
+        video1.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules, clean_ignore, clean_omission)
 
         logger.info('finish video downsample and alignment')
 
@@ -187,14 +180,13 @@ def load_clean_align_data(
         video_features = pair.compute_svd(frame_rate, saveroot_video)[:, : num_features]  # shape: (frames, features) num all session frames x 200 first pc's
         logger.info('finish video svd')
 
-    video_start_trials, video_og_start_trials = align_video_trials(subject_id, session, frame_rate, time_bin, dj_modules, clean_ignore=True, clean_omission=False)
+    video_start_trials, video_og_start_trials = align_video_trials(subject_id, session, frame_rate, time_bin, dj_modules, clean_ignore, clean_omission)
 
     # keep trials that are padded from both sides with at least one regular trial
     # eliminate large trials that succeed large trials from video data
-    video_start_trials, reward_labels, video_features = keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, video_features, step=2, preserve_large=False)
+    video_start_trials, reward_labels, video_final_features = keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, video_features, step=2, preserve_large=False)
 
-    #return start_trials, reward_labels, video_features
-    return video_start_trials, reward_labels, video_features
+    return video_start_trials, reward_labels, video_final_features
 
 
 

@@ -3,7 +3,7 @@ from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score, brier_sc
 import optuna
 import matplotlib.pyplot as plt
 import time
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, average_precision_score
 from sklearn.svm import SVC
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import cross_val_score, KFold, StratifiedKFold
@@ -139,8 +139,10 @@ class SVM:
                     'degree': self.params['degree']}
 
     def compute_metrics(self, y_true):
-        """Compute accuracy, precision, recall, F1 score, and specificity using confusion matrix."""
-
+        """
+        Compute accuracy, precision, recall, F1 score, and specificity using confusion matrix.
+        compute ROC auc and PR auc using ROC and PR curve.
+        """
         tn, fp, fn, tp = confusion_matrix(y_true, self.y_pred).ravel()
         accuracy = (tp + tn) / (tp + tn + fp + fn)
         precision = tp / (tp + fp) if (tp + fp) != 0 else 0  # Avoid division by zero
@@ -148,12 +150,20 @@ class SVM:
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) != 0 else 0
         specificity = tn / (tn + fp) if (tn + fp) != 0 else 0
 
+        # compute roc auc
+        roc_auc = roc_auc_score(y_true, self.y_probs)
+
+        # compute pr auc
+        pr_auc = average_precision_score(y_true, self.y_probs)
+
         return {
             "accuracy": accuracy,
             "precision": precision,
             "recall": recall,
             "f1_score": f1,
-            "specificity": specificity
+            "specificity": specificity,
+            "roc_auc_folds": roc_auc,
+            "pr_auc_folds": pr_auc
         }
 
     def roc(self, y_true):
@@ -166,6 +176,6 @@ class SVM:
             "fpr": fpr,
             "tpr": tpr,
             "thresholds": thresholds,
-            "auc": auc_score
+            "roc_auc": auc_score
         }
 
