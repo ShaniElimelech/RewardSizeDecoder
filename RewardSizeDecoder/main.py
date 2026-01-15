@@ -8,13 +8,13 @@ from RewardSizeDecoder_class import RewardSizeDecoder
 
 
 #######################################################################
-# Run this code lines in your terminal -
+
+# Run this code lines in your terminal(if there's access to conda path)/ anaconda prompt -
 # 1. create conda environment with all dependencies:
 # conda env create -f environment.yml
 # 2. activate environment:
 # conda activate RewardSizeDecoder_pipeline
-# 3. run main
-# python main.py
+
 #######################################################################
 
 
