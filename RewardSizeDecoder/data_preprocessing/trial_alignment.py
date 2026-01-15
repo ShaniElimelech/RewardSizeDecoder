@@ -95,6 +95,7 @@ def get_reward_size_labels(subject_id, session, dj_modules, handle_omission, cle
     tracking = dj_modules['tracking']
     # Base restriction
     restriction = (exp2.TrialRewardSize & key)
+    full_reward_labels = restriction.fetch('reward_size_type')
     restriction = restriction - tracking.TrackingTrialBad - tracking.VideoGroomingTrial
 
     if clean_ignore:
@@ -103,12 +104,26 @@ def get_reward_size_labels(subject_id, session, dj_modules, handle_omission, cle
     if handle_omission == 'clean':
         restriction &= ['reward_size_type="large"', 'reward_size_type="regular"']
 
-    reward_labels = restriction.fetch('reward_size_type')
+    clean_reward_labels = restriction.fetch('reward_size_type')
+    percentage_lost = round((1 - len(clean_reward_labels)/len(full_reward_labels)) * 100)
+
+    if percentage_lost > 80:
+        if percentage_lost > 95:
+            raise ValueError(f'After cleaning bad trials/ ignore trials more than {percentage_lost}% of trials are lost, skipping this session')
+
+        else:
+            print(f'Warning!!! There are {len(full_reward_labels - clean_reward_labels)} trials that were lost after cleaning out of {len(full_reward_labels)}'
+                  f'{percentage_lost} percent of trials were lost')
+
+    large_reward_perc = round((sum(x == 'large' for x in clean_reward_labels) / len(clean_reward_labels)) * 100)
+    if large_reward_perc < 2:
+        raise ValueError(f'After cleaning bad trials/ ignore trials only {large_reward_perc}% of trials are large, skipping this session')
+
 
     if handle_omission == 'convert':
-        reward_labels[reward_labels == 'omission'] = 'regular'
+        clean_reward_labels[clean_reward_labels == 'omission'] = 'regular'
 
-    return reward_labels
+    return clean_reward_labels
 
 
 def video2neural2reward_labels_alignment(subject_id, session, frame_rate, time_bin: tuple, dj_info: tuple, save_path,

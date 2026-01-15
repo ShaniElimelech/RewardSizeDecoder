@@ -1,4 +1,4 @@
-from main import RewardSizeDecoder
+from RewardSizeDecoder_class import RewardSizeDecoder
 from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,19 +24,19 @@ all_sessions = {}
 frame_rate = 5
 time_bin = (0, 5)
 time_window = np.arange(time_bin[0] * frame_rate, time_bin[1] * frame_rate + 1)
-pcs_remove = range(500)
+pcs = range(200)
 pc_dict = {}
-for pc_remove in pcs_remove:
+for pc_single in pcs:
     subjects_score_lst = []
     for i, subject in enumerate(subject_lst):
         sessions_score_lst = []
         session_list = session_lists[i]
         for j, session in enumerate(session_list):
             decoder = RewardSizeDecoder(
-                pc_remove=pc_remove,
+                pc_single=pc_single,
                 subject_id=subject,                                 # subject id
                 session=session,                                    # session number
-                num_features=500,      # [1,2,5,10,20,50,100,200,300,400,500]                             # number of predictive features from video
+                num_features=200,      # [1,2,5,10,20,50,100,200,300,400,500]                             # number of predictive features from video
                 frame_rate=5,                                  # neural frame rate(Hz)
                 time_bin=(-1, 8),                                 # trial bin duration(sec)
                 original_video_path='D:/Arseny_behavior_video',     # path to raw original video data
@@ -53,6 +53,7 @@ for pc_remove in pcs_remove:
 
             decoder.validate_params(supported_models={"LR", "SVM", "LDA"}, supported_resampling=supported_resampling)
             decoder.define_saveroot(reference_path=None,            # data file path/ directory to save results, if None results will be save in the parent folder
+                                    reference_path_video=None,
                                     log_to_file=False)              # dont save logs to file
             # decoder.save_user_parameters(fmt="excel")
 
@@ -72,14 +73,13 @@ for pc_remove in pcs_remove:
         subjects_score_lst.append(ave_score_sesh)
 
     ave_score_subject = np.mean(np.array(subjects_score_lst))
-    pc_dict[pc_remove] = ave_score_subject
+    pc_dict[pc_single] = ave_score_subject
+#
+fpath = "C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/num_pc_analysis/single_pc_decoding.pkl"
+# with open(fpath, "wb") as f:
+#     pickle.dump(pc_dict, f)
 
-
-fpath = "C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/num_pc_analysis/leave_one_pc_out.pkl"
-with open(fpath, "wb") as f:
-    pickle.dump(pc_dict, f)
-
-# pc_dict = pickle.load(open(fpath, "rb"))
+pc_dict = pickle.load(open(fpath, "rb"))
 
 #############
 # compute baseline
@@ -119,58 +119,22 @@ for i, subject in enumerate(subject_lst):
 
 ave_score_baseline = np.mean(np.array(subjects_score_lst))
 
-
 pcs = sorted(pc_dict.keys())
 scores = np.array([pc_dict[pc] for pc in pcs])
-deltas = scores - ave_score_baseline
 
-# Color logic
-colors = ['green' if d < 0 else 'red' for d in deltas]
+plt.figure(figsize=(10, 5))
 
-plt.figure(figsize=(15, 5))
-
-# Bars start at baseline and extend up/down
-plt.bar(
-    pcs,
-    deltas,
-    bottom=ave_score_baseline,
-    color=colors,
-    edgecolor='black'
-)
+plt.plot(pcs, scores)
 
 # Baseline
-plt.axhline(
-    float(ave_score_baseline),
-    color='black',
-    linestyle='--',
-    linewidth=5,
-    zorder=10,   # <-- important
-    label='Baseline'
-)
-plt.xlabel("PC removed")
-# plt.xticks(pcs, pcs)
+plt.axhline(float(ave_score_baseline), color='black', linestyle='--', linewidth=1.5, label="full feature space (200 pc's)")
+
+plt.xlabel("PC")
 plt.ylabel("Decoder performance (AUC)")
-plt.title(f"Effect of Removing Each PC on Decoder Performance\nAUC averaged across subjects and over time bin {time_bin} s")
-
-legend_elements = [
-    Patch(facecolor='green', label='Important (performance ↓)'),
-    Patch(facecolor='red', label='Not important (performance ↑)'),
-]
-plt.legend(handles=legend_elements, loc='best')
-
+plt.title(f"Single PC decoding\nAUC averaged across subjects and over time bin {time_bin} s")
+plt.legend()
 plt.tight_layout()
-# plt.show()
-plt.savefig("C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/num_pc_analysis/leave_one_pc_out.png")
-
-
-
-
-
-
-
-
-
-
+plt.savefig("C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/num_pc_analysis/single_pc_decoding.png")
 
 
 

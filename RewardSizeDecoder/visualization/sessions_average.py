@@ -61,7 +61,6 @@ def scores_ave(datapath, model, subject_lst, session_lists, frame_rate, param, m
         session_list = session_lists[i]
         all_sessions_all_time = {}
         for j, session in enumerate(session_list):
-            print(subject, session)
             data = os.path.join(datapath, f'Decoder {model} output' ,f'{subject}', f'session{session}', f'{metric}.pkl')
             if not os.path.exists(data):
                 continue
@@ -96,18 +95,18 @@ def scores_ave(datapath, model, subject_lst, session_lists, frame_rate, param, m
     plot_score_over_time(ave_animals, stem_animals, frame_rate, title, save_path, ylabel=f'{param} score')
 
 
-metrics = ['scores', 'roc', 'pr_auc']
-params = ['PR-auc', 'pr_auc_folds', 'roc_auc', 'roc_auc_folds', 'accuracy', 'precision', 'recall', 'f1_score']
-subject_lst =  [464724, 464725, 463189, 463190]
-session_lists = [[1, 2, 3, 4, 5, 6], [1, 2, 6, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]  # [[1, 2, 3, 4, 5, 6], [1, 2, 6, 7, 8, 9], [1, 3, 4, 9], [2, 3, 5, 6, 10]]
-model = 'LR'    # ['LR', 'LDA', 'SVM']
-frame_rate = 10
-data_path = f'C:/Users/admin/RewardSizeDecoder pipeline/RewardSizeDecoder/results/prediction - fps 10 Hz'
-for param in params:
-    if param == 'roc_auc':
-        metric = 'roc'
-    elif param == 'PR-auc':
-        metric = 'pr_auc'
-    else:
-        metric = 'scores'
-    scores_ave(data_path, model, subject_lst, session_lists, frame_rate, param=param, metric=metric)
+def compute_averages(subject_lst, session_lists, model, frame_rate, data_path):
+    """
+    Compute average scores for all subjects.
+
+    """
+    metrics = ['scores', 'roc', 'pr_auc']
+    params = ['PR-auc', 'pr_auc_folds', 'roc_auc', 'roc_auc_folds', 'accuracy', 'precision', 'recall', 'f1_score']
+    for param in params:
+        if param == 'roc_auc':
+            metric = 'roc'
+        elif param == 'PR-auc':
+            metric = 'pr_auc'
+        else:
+            metric = 'scores'
+        scores_ave(data_path, model, subject_lst, session_lists, frame_rate, param=param, metric=metric)

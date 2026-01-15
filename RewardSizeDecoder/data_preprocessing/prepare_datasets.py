@@ -96,7 +96,8 @@ def load_clean_align_data(
         saveroot_video,
         logger,
         handle_omission: str ='convert',
-        clean_ignore=True
+        clean_ignore=True,
+        permute_labels=False
     ):
     """
     A multi alignment function that gets subject id and session and align all datasets (video, neural activity, reward size labels) that goes into the reward decoder.
@@ -131,26 +132,17 @@ def load_clean_align_data(
     clean_omission = True if handle_omission == 'clean' else False
     logger.debug('start trial alignment')
     # get trial new start and end frames - global alignment of trials to the first lick after go cue
-    # start_trials, end_trials, _, _ = align_trials_and_get_lickrate(subject_id, session, frame_rate, time_bin, dj_modules, clean_ignore, clean_omission, flag_electric_video=True)
     logger.info('finish trial alignment')
     # get reward size labels
     reward_labels = get_reward_size_labels(subject_id, session, dj_modules, handle_omission, clean_ignore)
 
-    #assert len(reward_labels) == len(start_trials), ('Lengths of reward_labels and start_trials do not match, '
-                                                  #'please compare the lengths of original datasets in datajoint')
-
     svd_path = os.path.join(saveroot_video, f'{subject_id}', f'session{session}', 'video_svd', f'v_temporal_dynamics_2cameras.npy')
-    # svd_path = os.path.join(saveroot_video, 'video_svd', f'{subject_id}', f'session{session}', f'v_temporal_dynamics_2cameras.npy')
-
-    # neural_indexes_path = os.path.join(saveroot, 'downsampled_n_v_data', f'{subject_id}', f'session{session}', f'neural_indexes.npy')
 
     # check if neural indexes and video svd already exist
     #if os.path.exists(svd_path) and os.path.exists(neural_indexes_path):
     if os.path.exists(svd_path):
-        #neural_indexes = np.load(neural_indexes_path)
         video_features = np.load(svd_path)[:, : num_features]
-        # video_features = np.load(svd_path)[:, pc_single].reshape(-1, 1)
-        # video_features = np.delete(video_features, pc_remove, axis=1)
+
         logger.info('video svd and neural_indexes already exist -> finish loading svd')
 
     else:
@@ -161,11 +153,6 @@ def load_clean_align_data(
         # Initialize videos
         video0 = Video(subject_id, session, camera_num=0, batch_load=True, video_path=None)
         video1 = Video(subject_id, session, camera_num=1, batch_load=True, video_path=None)
-
-        # Align neural data to video data and downsample video
-        #video0_array, neural_indexes = video0.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot, compute_neural_data=False)
-        # once you computed neural array for one camera you dont need to repeat for the second
-        #video1_array, neural_indexes = video1.align_with_neural_data(dj_modules, original_video_path, clean_ignore, clean_omission, save_root=saveroot, compute_neural_data=False)
 
         # videos go through the full preprocessing pipeline
         video0.full_video_pipline(original_video_path, frame_rate, saveroot_video, dj_modules, clean_ignore, clean_omission)
@@ -185,6 +172,9 @@ def load_clean_align_data(
     # keep trials that are padded from both sides with at least one regular trial
     # eliminate large trials that succeed large trials from video data
     video_start_trials, reward_labels, video_final_features = keep_pure_trials(video_start_trials, video_og_start_trials, reward_labels, video_features, step=2, preserve_large=False)
+
+    if permute_labels:
+        reward_labels = np.random.permutation(reward_labels)
 
     return video_start_trials, reward_labels, video_final_features
 
